@@ -10,9 +10,9 @@ import os
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 # CORS(app)
-# testing 1
 
 custom_db_folder = r"D:\Learn\MonWeb-FYP\database"
+# testing save
 
 # 关键修正：如果文件夹不存在，自动创建它！
 if not os.path.exists(custom_db_folder):
