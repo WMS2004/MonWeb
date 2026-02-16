@@ -1,0 +1,14 @@
+# Python (Flask) 忽略文件
+__pycache__/
+*.py[cod]
+venv/
+.env
+instance/
+.pytest_cache/
+
+# Node.js (React) 忽略文件
+node_modules/
+build/
+.DS_Store
+dist/
+.env.local
