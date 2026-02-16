@@ -29,19 +29,44 @@ app.config['SCHEDULER_API_ENABLED'] = True
 db = SQLAlchemy(app)
 scheduler = APScheduler()
 
+def create_admin():
+    with app.app_context():
+        db.create_all() # 创建所有表
+        # 检查是否已有 admin
+        if not User.query.filter_by(username='admin').first():
+            new_admin = User(username='admin', email='admin@gmail.com', password='admin', role='Admin')
+            db.session.add(new_admin)
+            db.session.commit()
+            print(">>> Default Admin Created!")
+
 # --- 数据库模型 ---
+# 1. 用户表 (User Management 页面用)
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    email = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    # 关键字段：Role。默认是 'User'，但你将创建一个 'Admin'
+    role = db.Column(db.String(20), default='User', nullable=False) 
+
+# 2. 网站表 (Dashboard & Website Status 页面用)
 class Website(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    url = db.Column(db.String(200), nullable=False)
-    name = db.Column(db.String(100), nullable=False)
-    interval = db.Column(db.Integer, default=60) # 监控间隔(秒)
+    name = db.Column(db.String(100), nullable=False) # Friendly Name
+    url = db.Column(db.String(500), nullable=False)
+    check_type = db.Column(db.String(10), default='http') # http or ping
+    interval = db.Column(db.Integer, default=5) # 监控频率 (分钟)
+    # 存储最新状态，方便 Dashboard 快速读取
+    last_status = db.Column(db.String(20), default='Pending') # Up, Down, Warning
+    last_response_time = db.Column(db.Float, default=0)
 
-class Log(db.Model):
+# 3. 监控日志表 (Details & NLP Reports 页面用)
+class MonitorLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     website_id = db.Column(db.Integer, db.ForeignKey('website.id'), nullable=False)
-    status = db.Column(db.String(20), nullable=False) # "UP" or "DOWN"
-    latency = db.Column(db.Float) # 毫秒
-    timestamp = db.Column(db.DateTime, default=datetime.now)
+    status_code = db.Column(db.Integer) # 200, 404, 500
+    response_time = db.Column(db.Float)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 # --- 3. 核心监控功能 (新增部分) ---
 def check_website(website_id, url):
@@ -148,6 +173,8 @@ def get_status():
             "last_check": latest_log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if latest_log else "Never"
         })
     return jsonify(results)
+
+
 
 if __name__ == '__main__':
     init_db() # 运行前先检查数据库
