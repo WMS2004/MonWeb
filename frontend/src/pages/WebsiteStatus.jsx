@@ -13,6 +13,13 @@ const WebsiteStatus = () => {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false); // 扫描状态
 
+  // 删除确认模态框状态
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    siteId: null,
+    siteName: ''
+  });
+
   // --- 1. 获取数据 (Fetch) ---
   const fetchWebsites = () => {
     // 只有第一次加载显示 loading，后续静默更新
@@ -54,15 +61,28 @@ const WebsiteStatus = () => {
       });
   };
 
-  // --- 4. 删除逻辑 ---
-  const handleDelete = (id, name) => {
-    if (window.confirm(`Are you sure you want to delete "${name}" ?`)) {
-      fetch(`http://localhost:5000/api/websites/${id}`, { method: 'DELETE' })
-        .then(res => {
-          if (res.ok) fetchWebsites();
-          else alert("Deletion failed");
-        });
-    }
+// --- 4. 删除逻辑修改 ---
+  // 点击删除图标时，不直接删除，而是打开弹窗
+  const openDeleteModal = (id, name) => {
+    setDeleteModal({ isOpen: true, siteId: id, siteName: name });
+  };
+
+  // 执行真正的删除操作
+  const confirmDelete = () => {
+    fetch(`http://localhost:5000/api/websites/${deleteModal.siteId}`, { method: 'DELETE' })
+      .then(res => {
+        if (res.ok) {
+          setDeleteModal({ isOpen: false, siteId: null, siteName: '' });
+          fetchWebsites(); // 成功后自动刷新列表
+        } else {
+          alert("Deletion failed");
+        }
+      });
+  };
+
+  // 关闭弹窗
+  const closeDeleteModal = () => {
+    setDeleteModal({ isOpen: false, siteId: null, siteName: '' });
   };
 
   // --- 5. 过滤数据 ---
@@ -91,6 +111,36 @@ const WebsiteStatus = () => {
 
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+
+      {/* --- 删除确认弹窗 (Modal) --- */}
+      {deleteModal.isOpen && (
+        <div style={modalOverlayStyle}>
+          <div style={modalContentStyle}>
+            <div style={{ color: '#DC2626', marginBottom: '15px' }}>
+              <AlertCircle size={48} strokeWidth={1.5} />
+            </div>
+            <h2 style={{ margin: '0 0 10px', fontSize: '20px', color: '#111827' }}>Confirm Delete</h2>
+            <p style={{ margin: '0 0 25px', color: '#6B7280', textAlign: 'center', lineHeight: '1.5' }}>
+              Are you sure you want to delete <strong>"{deleteModal.siteName}"</strong>?<br />
+              This action cannot be undone and all history logs will be lost.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+              <button 
+                onClick={closeDeleteModal} 
+                style={cancelButtonStyle}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDelete} 
+                style={deleteConfirmButtonStyle}
+              >
+                Delete Website
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* --- 顶部 Header --- */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
@@ -245,6 +295,56 @@ const WebsiteStatus = () => {
   );
 };
 
+// --- 新增/更新的样式对象 ---
+
+const modalOverlayStyle = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(15, 23, 42, 0.7)', // 深色半透明遮罩
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 1000, // 确保在最上层
+  backdropFilter: 'blur(4px)' // 背景模糊
+};
+
+const modalContentStyle = {
+  backgroundColor: 'white',
+  padding: '32px',
+  borderRadius: '16px',
+  width: '100%',
+  maxWidth: '400px',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+};
+
+const cancelButtonStyle = {
+  flex: 1,
+  padding: '12px',
+  borderRadius: '8px',
+  border: '1px solid #E5E7EB',
+  backgroundColor: 'white',
+  color: '#374151',
+  fontWeight: '600',
+  cursor: 'pointer'
+};
+
+const deleteConfirmButtonStyle = {
+  flex: 1,
+  padding: '12px',
+  borderRadius: '8px',
+  border: 'none',
+  backgroundColor: '#DC2626',
+  color: 'white',
+  fontWeight: '600',
+  cursor: 'pointer'
+};
+
 // --- CSS 样式对象 ---
 const thStyle = {
   padding: '16px 24px',
@@ -253,6 +353,23 @@ const thStyle = {
   fontWeight: '600',
   textTransform: 'uppercase',
   letterSpacing: '0.05em'
+};
+
+const badgeStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  padding: '4px 10px',
+  borderRadius: '999px',
+  fontWeight: '600',
+  fontSize: '12px'
+};
+
+const tableWrapperStyle = {
+  backgroundColor: 'white',
+  borderRadius: '12px',
+  border: '1px solid #E5E7EB',
+  overflow: 'hidden'
 };
 
 const iconButtonStyle = {
@@ -265,6 +382,40 @@ const iconButtonStyle = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  transition: 'all 0.2s'
+};
+
+const scanButtonStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '10px 16px',
+  borderRadius: '8px',
+  border: '1px solid #E5E7EB',
+  backgroundColor: 'white',
+  cursor: 'pointer',
+  transition: 'all 0.2s'
+};
+
+const addNewButtonStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '10px 16px',
+  borderRadius: '8px',
+  border: 'none',
+  backgroundColor: '#0f172a',
+  color: 'white',
+  cursor: 'pointer',
+  transition: 'all 0.2s'
+};
+
+const tabButtonStyle = {
+  padding: '8px 16px',
+  borderRadius: '6px',
+  border: 'none',
+  cursor: 'pointer',
+  fontWeight: '500',
   transition: 'all 0.2s'
 };
 

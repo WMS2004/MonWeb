@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 /* --- 旋转动画 (Spin Animation) --- */
 @keyframes spin {
   from { transform: rotate(0deg); }

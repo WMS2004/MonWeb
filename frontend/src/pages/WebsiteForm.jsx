@@ -2,6 +2,46 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Globe, Activity, Zap, Bot, ArrowLeft } from 'lucide-react';
 
+  // --- 样式组件 (为了代码整洁) ---
+  const InputGroup = ({ label, children }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+      <label style={{ fontSize: '14px', fontWeight: '600', color: '#333' }}>{label}</label>
+      {children}
+    </div>
+  );
+
+  const DetectionCard = ({ title, desc, icon: Icon, active, onClick }) => (
+    <div 
+      onClick={onClick}
+      style={{
+        border: active ? '2px solid #0f172a' : '1px solid #e2e8f0',
+        backgroundColor: active ? '#f8fafc' : 'white',
+        borderRadius: '8px',
+        padding: '16px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ padding: '8px', background: '#e2e8f0', borderRadius: '6px' }}>
+          <Icon size={20} color="#475569" />
+        </div>
+        <div>
+          <div style={{ fontWeight: '600', fontSize: '14px' }}>{title}</div>
+          <div style={{ fontSize: '12px', color: '#64748b' }}>{desc}</div>
+        </div>
+      </div>
+      {/* 模拟 Toggle 开关 UI */}
+      <div className="toggle-switch">
+        <input type="checkbox" checked={active} readOnly />
+        <span className="slider"></span>
+      </div>
+    </div>
+  );
+
 const WebsiteForm = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -49,45 +89,7 @@ const WebsiteForm = () => {
     .finally(() => setIsSubmitting(false));
   };
 
-  // --- 样式组件 (为了代码整洁) ---
-  const InputGroup = ({ label, children }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-      <label style={{ fontSize: '14px', fontWeight: '600', color: '#333' }}>{label}</label>
-      {children}
-    </div>
-  );
 
-  const DetectionCard = ({ title, desc, icon: Icon, active, onClick }) => (
-    <div 
-      onClick={onClick}
-      style={{
-        border: active ? '2px solid #0f172a' : '1px solid #e2e8f0',
-        backgroundColor: active ? '#f8fafc' : 'white',
-        borderRadius: '8px',
-        padding: '16px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        cursor: 'pointer',
-        transition: 'all 0.2s'
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ padding: '8px', background: '#e2e8f0', borderRadius: '6px' }}>
-          <Icon size={20} color="#475569" />
-        </div>
-        <div>
-          <div style={{ fontWeight: '600', fontSize: '14px' }}>{title}</div>
-          <div style={{ fontSize: '12px', color: '#64748b' }}>{desc}</div>
-        </div>
-      </div>
-      {/* 模拟 Toggle 开关 UI */}
-      <div className="toggle-switch">
-        <input type="checkbox" checked={active} readOnly />
-        <span className="slider"></span>
-      </div>
-    </div>
-  );
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
