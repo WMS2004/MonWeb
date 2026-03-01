@@ -38,12 +38,12 @@ class Website(db.Model):
     url = db.Column(db.String(500), nullable=False)  # 比如 "https://google.com"
     interval = db.Column(db.Integer, default=5)      # 监控频率 (分钟)
     status = db.Column(db.String(20), default='Unknown') # Up, Down, Warning
-    last_checked = db.Column(db.DateTime, default=datetime.utcnow)
+    last_checked = db.Column(db.DateTime, default=datetime.now)
     # 新增字段 (为了匹配你的设计图)
     timeout = db.Column(db.Integer, default=10)        # 超时阈值
     monitor_type = db.Column(db.String(20), default='http') # http 或 ping
     ai_enabled = db.Column(db.Boolean, default=True)   # 是否启用 AI
-    logs = db.relationship('MonitoringLog', backref='website', lazy=True)
+    logs = db.relationship('MonitoringLog', backref='website', lazy=True, cascade="all, delete-orphan") # 关联日志表，删除网站时也删除相关日志
 
 # 监控日志表 (存历史数据用来画图)
 class MonitoringLog(db.Model):
@@ -105,7 +105,7 @@ def scan_all_websites():
             
             # 更新 Website 表状态
             site.status = new_status
-            site.last_checked = datetime.utcnow()
+            site.last_checked = datetime.now()
             
             # 插入历史日志 (MonitoringLog)
             new_log = MonitoringLog(
@@ -167,12 +167,19 @@ def get_websites():
     websites = Website.query.all()
     output = []
     for site in websites:
+        # 👇 新增：去日志表里找该网站最新的一条扫描记录
+        latest_log = MonitoringLog.query.filter_by(website_id=site.id).order_by(MonitoringLog.timestamp.desc()).first()
+        
+        # 👇 新增：如果有记录，就提取 response_time
+        res_time = latest_log.response_time if latest_log else None
+
         output.append({
             "id": site.id,
             "name": site.name,
             "url": site.url,
             "status": site.status,
-            "last_checked": site.last_checked.strftime("%H:%M:%S") if site.last_checked else "Never"
+            "last_checked": site.last_checked.strftime("%H:%M:%S") if site.last_checked else "Never",
+            "response_time": res_time  # 👇 新增：把响应时间传给前端！
         })
     return jsonify(output)
 
@@ -242,6 +249,38 @@ def login():
         }), 200
     else:
         return jsonify({"status": "error", "message": "Invalid username or password"}), 401
+
+# 获取单个网站的详细信息和最近的监控日志 (用于状态详情页)
+@app.route('/api/websites/<int:id>/logs', methods=['GET'])
+def get_website_logs(id):
+    site = Website.query.get_or_404(id)
+    
+    # 从数据库获取该网站最近的 30 条日志记录
+    logs = MonitoringLog.query.filter_by(website_id=id).order_by(MonitoringLog.timestamp.desc()).limit(30).all()
+    
+    # 倒序排列，因为我们要画图，时间必须是从左到右（过去 -> 现在）
+    logs_data = []
+    for log in reversed(logs):
+        logs_data.append({
+            "time": log.timestamp.strftime("%H:%M:%S"),
+            "response_time": log.response_time,
+            "status_code": log.status_code
+        })
+        
+    return jsonify({
+        "website": {
+            "id": site.id,
+            "name": site.name,
+            "url": site.url,
+            "status": site.status,
+            "interval": site.interval,
+            "timeout": site.timeout,
+            "monitor_type": site.monitor_type,
+            "ai_enabled": site.ai_enabled,
+            "monitoring_since": site.last_checked.strftime("%Y/%m/%d") if site.last_checked else "N/A"
+        },
+        "logs": logs_data
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

@@ -24,6 +24,12 @@ const MainLayout = () => {
     borderLeft: location.pathname === path ? '3px solid #1890ff' : '3px solid transparent'
   });
 
+  // 根据当前路径动态设置顶部栏标题
+  let headerTitle = location.pathname.replace('/', '').toUpperCase();
+  if (location.pathname.startsWith('/website/')) {
+    headerTitle = 'WEBSITE DETAILS';
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       {/* 1. 左侧侧边栏 */}
@@ -51,7 +57,7 @@ const MainLayout = () => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#f0f2f5' }}>
         {/* 顶部栏 */}
         <header style={{ height: '64px', background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,21,41,.08)' }}>
-          <h3 style={{ margin: 0 }}>{location.pathname.replace('/', '').toUpperCase()}</h3>
+          <h3 style={{ margin: 0 }}>{headerTitle}</h3>
           <div>
             <span style={{ marginRight: '15px' }}>Admin User</span>
             <Link to="/login" style={{ color: 'red', textDecoration: 'none' }}>Logout</Link>

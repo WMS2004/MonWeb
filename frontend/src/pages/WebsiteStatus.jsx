@@ -13,12 +13,9 @@ const WebsiteStatus = () => {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false); // 扫描状态
 
-  // 删除确认模态框状态
-  const [deleteModal, setDeleteModal] = useState({
-    isOpen: false,
-    siteId: null,
-    siteName: ''
-  });
+  // --- 弹窗相关的 State ---
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [siteToDelete, setSiteToDelete] = useState(null);
 
   // --- 1. 获取数据 (Fetch) ---
   const fetchWebsites = () => {
@@ -61,28 +58,41 @@ const WebsiteStatus = () => {
       });
   };
 
-// --- 4. 删除逻辑修改 ---
-  // 点击删除图标时，不直接删除，而是打开弹窗
-  const openDeleteModal = (id, name) => {
-    setDeleteModal({ isOpen: true, siteId: id, siteName: name });
+  // --- 4. 删除逻辑 (弹窗触发 & 确认删除) ---
+  
+  // 4.1 点击列表中的删除图标，打开弹窗并记录要删除的站点
+  const handleDeleteClick = (id, name) => {
+    setSiteToDelete({ id, name });
+    setIsModalOpen(true);
   };
 
-  // 执行真正的删除操作
-  const confirmDelete = () => {
-    fetch(`http://localhost:5000/api/websites/${deleteModal.siteId}`, { method: 'DELETE' })
-      .then(res => {
+  // 4.2 点击弹窗的取消按钮
+  const handleCancelDelete = () => {
+    setIsModalOpen(false);
+    setSiteToDelete(null);
+  };
+
+  // 4.3 点击弹窗的确认删除按钮
+  const handleConfirmDelete = () => {
+    if (!siteToDelete) return;
+    
+    fetch(`http://localhost:5000/api/websites/${siteToDelete.id}`, { method: 'DELETE' })
+      .then(async res => {
         if (res.ok) {
-          setDeleteModal({ isOpen: false, siteId: null, siteName: '' });
-          fetchWebsites(); // 成功后自动刷新列表
+          fetchWebsites(); // 成功删除后自动刷新页面数据
+          setIsModalOpen(false); // 关闭弹窗
+          setSiteToDelete(null); // 清空记录
         } else {
+          const errText = await res.text();
+          console.error("Delete failed with status:", res.status, errText);
+          alert(`Deletion failed! Status: ${res.status}\nPlease check your backend app.py.`);
           alert("Deletion failed");
         }
+      })
+      .catch(err => {
+        console.error("Delete error:", err);
+        alert("An error occurred while deleting.");
       });
-  };
-
-  // 关闭弹窗
-  const closeDeleteModal = () => {
-    setDeleteModal({ isOpen: false, siteId: null, siteName: '' });
   };
 
   // --- 5. 过滤数据 ---
@@ -109,38 +119,22 @@ const WebsiteStatus = () => {
     }
   };
 
+  // 时间转换函数：将后端的 UTC 时间转换为本地时间
+  const formatTime = (timeStr) => {
+    if (!timeStr) return 'Never';
+    // 假设后端返回 "YYYY-MM-DD HH:mm:ss"
+    // 在末尾加上 'Z'，告诉浏览器这是 UTC 时间
+    const date = new Date(timeStr.replace(' ', 'T') + 'Z');
+    
+    // 如果解析出错了，直接返回原字符串
+    if (isNaN(date)) return timeStr;
+
+    // 格式化为本地的 HH:MM:SS
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-
-      {/* --- 删除确认弹窗 (Modal) --- */}
-      {deleteModal.isOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
-            <div style={{ color: '#DC2626', marginBottom: '15px' }}>
-              <AlertCircle size={48} strokeWidth={1.5} />
-            </div>
-            <h2 style={{ margin: '0 0 10px', fontSize: '20px', color: '#111827' }}>Confirm Delete</h2>
-            <p style={{ margin: '0 0 25px', color: '#6B7280', textAlign: 'center', lineHeight: '1.5' }}>
-              Are you sure you want to delete <strong>"{deleteModal.siteName}"</strong>?<br />
-              This action cannot be undone and all history logs will be lost.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
-              <button 
-                onClick={closeDeleteModal} 
-                style={cancelButtonStyle}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmDelete} 
-                style={deleteConfirmButtonStyle}
-              >
-                Delete Website
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       
       {/* --- 顶部 Header --- */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
@@ -250,14 +244,16 @@ const WebsiteStatus = () => {
 
                     {/* 最后检查时间 */}
                     <td style={{ padding: '16px 24px', color: '#374151' }}>
-                      {site.last_checked || 'Never'}
+                      {formatTime(site.last_checked)}
                     </td>
 
                     {/* 响应时间 (不同颜色区分快慢) */}
                     <td style={{ padding: '16px 24px', fontWeight: '500', 
-                      color: !site.status || site.status === 'Down' ? '#DC2626' : (parseInt(site.response_time) > 300 ? '#D97706' : '#059669') 
+                      color: !site.status || site.status === 'Down' || parseFloat(site.response_time) === 0 ? '#DC2626' : (parseFloat(site.response_time) > 300 ? '#D97706' : '#059669') 
                     }}>
-                      {site.status === 'Down' ? 'N/A' : (site.response_time ? `${site.response_time}ms` : '-')}
+                      {site.response_time !== null && site.response_time !== undefined && site.response_time !== '' 
+                        ? `${site.response_time}ms` 
+                        : '0ms'}
                     </td>
 
                     {/* 可用性 (目前是假的，后期可以算) */}
@@ -274,9 +270,9 @@ const WebsiteStatus = () => {
                         </Link>
                         {/* 编辑按钮 (暂未实现功能) */}
                         <button style={iconButtonStyle} title="Edit"><Edit2 size={18} /></button>
-                        {/* 删除按钮 */}
+                        {/* 删除按钮 - 修改为触发自定义弹窗 */}
                         <button 
-                          onClick={() => handleDelete(site.id, site.name)}
+                          onClick={() => handleDeleteClick(site.id, site.name)}
                           style={{ ...iconButtonStyle, color: '#DC2626', borderColor: '#FECACA', backgroundColor: '#FEF2F2' }}
                           title="Delete"
                         >
@@ -291,58 +287,66 @@ const WebsiteStatus = () => {
           </tbody>
         </table>
       </div>
+
+      {/* --- 自定义删除确认弹窗 (Modal) --- */}
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)', // 半透明黑色遮罩，阻挡其他操作
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999 // 保证在最上层
+        }}>
+          {/* 弹窗卡片 */}
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '12px',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+            maxWidth: '400px',
+            width: '90%',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center'
+          }}>
+            <div style={{ backgroundColor: '#FEE2E2', padding: '12px', borderRadius: '50%', marginBottom: '16px' }}>
+              <AlertTriangle size={32} color="#DC2626" />
+            </div>
+            
+            <h2 style={{ margin: '0 0 10px', fontSize: '20px', color: '#111827' }}>Delete Website</h2>
+            
+            <p style={{ margin: '0 0 24px', color: '#4B5563', fontSize: '14px', lineHeight: '1.5' }}>
+              Are you sure you want to delete <strong>{siteToDelete?.name}</strong>? This action cannot be undone.
+            </p>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', width: '100%' }}>
+              <button
+                onClick={handleCancelDelete}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #D1D5DB',
+                  backgroundColor: 'white', color: '#374151', cursor: 'pointer', fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: '8px', border: 'none',
+                  backgroundColor: '#DC2626', color: 'white', cursor: 'pointer', fontWeight: '500'
+                }}
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
-
-// --- 新增/更新的样式对象 ---
-
-const modalOverlayStyle = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundColor: 'rgba(15, 23, 42, 0.7)', // 深色半透明遮罩
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000, // 确保在最上层
-  backdropFilter: 'blur(4px)' // 背景模糊
-};
-
-const modalContentStyle = {
-  backgroundColor: 'white',
-  padding: '32px',
-  borderRadius: '16px',
-  width: '100%',
-  maxWidth: '400px',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
-};
-
-const cancelButtonStyle = {
-  flex: 1,
-  padding: '12px',
-  borderRadius: '8px',
-  border: '1px solid #E5E7EB',
-  backgroundColor: 'white',
-  color: '#374151',
-  fontWeight: '600',
-  cursor: 'pointer'
-};
-
-const deleteConfirmButtonStyle = {
-  flex: 1,
-  padding: '12px',
-  borderRadius: '8px',
-  border: 'none',
-  backgroundColor: '#DC2626',
-  color: 'white',
-  fontWeight: '600',
-  cursor: 'pointer'
 };
 
 // --- CSS 样式对象 ---
@@ -355,23 +359,6 @@ const thStyle = {
   letterSpacing: '0.05em'
 };
 
-const badgeStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  padding: '4px 10px',
-  borderRadius: '999px',
-  fontWeight: '600',
-  fontSize: '12px'
-};
-
-const tableWrapperStyle = {
-  backgroundColor: 'white',
-  borderRadius: '12px',
-  border: '1px solid #E5E7EB',
-  overflow: 'hidden'
-};
-
 const iconButtonStyle = {
   padding: '8px',
   borderRadius: '6px',
@@ -382,40 +369,6 @@ const iconButtonStyle = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  transition: 'all 0.2s'
-};
-
-const scanButtonStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  padding: '10px 16px',
-  borderRadius: '8px',
-  border: '1px solid #E5E7EB',
-  backgroundColor: 'white',
-  cursor: 'pointer',
-  transition: 'all 0.2s'
-};
-
-const addNewButtonStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  padding: '10px 16px',
-  borderRadius: '8px',
-  border: 'none',
-  backgroundColor: '#0f172a',
-  color: 'white',
-  cursor: 'pointer',
-  transition: 'all 0.2s'
-};
-
-const tabButtonStyle = {
-  padding: '8px 16px',
-  borderRadius: '6px',
-  border: 'none',
-  cursor: 'pointer',
-  fontWeight: '500',
   transition: 'all 0.2s'
 };
 

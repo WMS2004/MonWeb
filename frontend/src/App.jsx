@@ -38,7 +38,7 @@ function App() {
           <Route path="users" element={<UserManagement />} />
           <Route path="support" element={<Support />} />
           <Route path="profile" element={<Profile />} />
-          <Route path="/website/:id" element={<div>详情页开发中... ID: {window.location.pathname.split('/').pop()}</div>} />
+          <Route path="/website/:id" element={<WebsiteDetails />} />
         </Route>
 
         {/* Catch all - Redirect to login or 404 */}
