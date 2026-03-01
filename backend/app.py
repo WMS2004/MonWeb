@@ -3,6 +3,8 @@ import platform
 import subprocess
 import requests
 import time
+import json 
+from google import genai
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -12,6 +14,9 @@ import atexit
 
 app = Flask(__name__)
 CORS(app)
+
+GEMINI_API_KEY = "AIzaSyCLLZgWEULDccRaEzQLEVqqZMfB4wHLTBc" 
+ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # --- 1. 数据库配置 ---
 # 数据库文件会生成在 backend 文件夹下的 instance 目录或根目录
@@ -281,6 +286,175 @@ def get_website_logs(id):
         },
         "logs": logs_data
     })
+
+# AI/NLP 报告生成接口
+@app.route('/api/reports/daily', methods=['GET'])
+def get_daily_report():
+    websites = Website.query.all()
+    total_sites = len(websites)
+    
+    if total_sites == 0:
+        return jsonify({"summary": "No websites are currently being monitored.", "details": [], "metrics": {}})
+
+    report_details = []
+    down_sites = 0
+    warning_sites = 0
+
+    # 分析每个网站的数据
+    for site in websites:
+        # 获取最近的 10 条记录用来分析趋势
+        logs = MonitoringLog.query.filter_by(website_id=site.id).order_by(MonitoringLog.timestamp.desc()).limit(10).all()
+        
+        if not logs:
+            report_details.append(f"• {site.name}: Insufficient data for analysis.")
+            continue
+
+        avg_ping = sum(log.response_time for log in logs) / len(logs)
+        errors = sum(1 for log in logs if log.status_code != 200)
+
+        # NLP 自然语言生成逻辑
+        if site.status == 'Down' or errors > 0:
+            down_sites += 1
+            report_details.append(f"• {site.name} is currently DOWN. It experienced {errors} connection failures in recent checks. Immediate attention is required.")
+        elif site.status == 'Warning' or avg_ping > 400:
+            warning_sites += 1
+            report_details.append(f"• {site.name} is ONLINE but experiencing HIGH LATENCY. The average response time is {avg_ping:.0f}ms, which exceeds the normal threshold.")
+        else:
+            report_details.append(f"• {site.name} is performing optimally with a healthy average response time of {avg_ping:.0f}ms.")
+
+    # 生成总体摘要 (Executive Summary)
+    if down_sites == 0 and warning_sites == 0:
+        summary_intro = f"Excellent news! All {total_sites} monitored websites are running smoothly with no detected anomalies or downtime."
+    elif down_sites > 0:
+        summary_intro = f"CRITICAL ALERT: {down_sites} out of {total_sites} monitored systems are currently experiencing downtime. Please review the details below."
+    else:
+        summary_intro = f"Notice: All systems are online, but {warning_sites} site(s) are experiencing performance degradation (High Latency)."
+
+    # 计算总体健康度
+    health_score = ((total_sites - down_sites) / total_sites) * 100
+
+    return jsonify({
+        "date": datetime.utcnow().strftime("%B %d, %Y"),
+        "summary": summary_intro,
+        "details": report_details,
+        "metrics": {
+            "health_score": f"{health_score:.1f}%",
+            "total": total_sites,
+            "down": down_sites,
+            "warning": warning_sites
+        }
+    })
+
+@app.route('/api/generate-report', methods=['POST'])
+def generate_ai_report():
+    try:
+        data = request.json
+        time_range = data.get('timeRange', '7d')
+        target_site = data.get('targetSite', 'all')
+        
+        print(f"[AI Report] 正在提取数据库记录... 范围: {time_range}, 目标: {target_site}")
+        
+        # 1. 从数据库提取真实的监控日志 (此处提取最近 200 条作为样本)
+        logs = MonitoringLog.query.order_by(MonitoringLog.timestamp.desc()).limit(200).all()
+        
+        if not logs:
+            return jsonify({"status": "error", "message": "数据库中尚无监控数据，请等待系统运行一段时间后再生成报告。"}), 400
+            
+        # 2. 在后端进行基础的数据清洗与聚合
+        total_requests = len(logs)
+        errors = {'500': 0, '502': 0, '404': 0, 'Timeout': 0}
+        latencies = []
+        
+        for log in logs:
+            if log.status_code == 500: errors['500'] += 1
+            elif log.status_code == 502: errors['502'] += 1
+            elif log.status_code == 404: errors['404'] += 1
+            elif log.status == 'Down' or log.response_time > 1000: errors['Timeout'] += 1
+            
+            latencies.append(log.response_time)
+            
+        avg_latency = sum(latencies) / total_requests if total_requests > 0 else 0
+        error_count = sum(errors.values())
+        uptime_percent = ((total_requests - error_count) / total_requests) * 100 if total_requests > 0 else 100
+        
+        # 构建要喂给 AI 的统计字典
+        db_stats = {
+            "总检测次数": total_requests,
+            "平均响应时间 (ms)": round(avg_latency, 2),
+            "整体可用性": f"{uptime_percent:.2f}%",
+            "各类错误发生次数": errors
+        }
+
+        # 3. 构建严密的 Prompt (提示词)
+        prompt = f"""
+        你是一个拥有10年经验的高级 AIOps 与网络安全架构师。
+        请基于以下最新的网站监控数据，用中文生成一份专业的系统诊断报告。
+        
+        监控数据：
+        {json.dumps(db_stats, ensure_ascii=False)}
+
+        【重要强制要求】
+        你必须且只能返回合法的 JSON 格式数据，绝对不要包含任何 markdown 代码块标记 (比如 ```json )，直接输出花括号开头的原生 JSON 字符串。
+        JSON 必须严格符合以下结构：
+        {{
+            "summary": "执行摘要（3-4句话的总体评价，请结合数据中的可用性和响应时间来写）",
+            "healthScore": "健康评分，只能从 A, B, C, D 中选一个 (如果没有错误就是A，错误多就是C或D)",
+            "incidentAnalysis": "故障与根因分析详细段落 (如果错误为0，就表扬系统极度稳定；如果有错误，请像专家一样合理推测原因，比如服务器过载、网络波动等)",
+            "insights": ["性能或安全洞察点1", "性能或安全洞察点2"],
+            "recommendations": ["具体运维建议1", "具体运维建议2", "具体运维建议3"]
+        }}
+        """
+
+        print("[AI Report] 正在调用 Gemini 2.5 Flash 大模型分析数据...")
+        
+        # 4. 调用新版 Gemini API
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        
+        response_text = response.text.strip()
+        print("\n========== Gemini AI 原始返回数据 ==========")
+        print(response_text)
+        print("==========================================\n")
+        
+        # 去除大模型有时会附带的 Markdown 标记
+        if response_text.startswith('```json'):
+            response_text = response_text[7:]
+        if response_text.endswith('```'):
+            response_text = response_text[:-3]
+
+        # 解析 AI 返回的 JSON 字符串
+        ai_data = json.loads(response_text.strip())
+
+        # 5. 组装图表所需的前端数据格式
+        # 错误分布饼图数据
+        error_chart = [{"name": k, "value": v} for k, v in errors.items() if v > 0]
+        if not error_chart:
+            error_chart = [{"name": "正常请求", "value": total_requests}] # 如果全是好的，就画个全蓝的饼图
+            
+        # 延迟趋势柱状图数据 (取最近 7 个点)
+        recent_logs = logs[:7]
+        recent_logs.reverse() # 时间正序
+        latency_chart = [{"name": log.timestamp.strftime("%H:%M"), "ms": round(log.response_time, 2)} for log in recent_logs]
+
+        # 6. 将 AI 文字报告与图表数据合并返回
+        final_report = {
+            "summary": ai_data.get("summary", ""),
+            "healthScore": ai_data.get("healthScore", "A"),
+            "incidentAnalysis": ai_data.get("incidentAnalysis", ""),
+            "insights": ai_data.get("insights", []),
+            "recommendations": ai_data.get("recommendations", []),
+            "errorChartData": error_chart,
+            "latencyChartData": latency_chart
+        }
+
+        print("[AI Report] 报告生成完毕，已下发给前端！")
+        return jsonify({"status": "success", "data": final_report}), 200
+
+    except Exception as e:
+        print(f"[AI Report] 发生错误: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
