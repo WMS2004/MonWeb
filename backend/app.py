@@ -456,5 +456,46 @@ def generate_ai_report():
         print(f"[AI Report] 发生错误: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/support-chat', methods=['POST'])
+def support_chat():
+    try:
+        data = request.json
+        user_message = data.get('message', '')
+        
+        if not user_message:
+            return jsonify({"status": "error", "message": "Message cannot be empty"}), 400
+
+        # 核心：通过严格的 Prompt 设定 AI 的人设和回答格式
+        prompt = f"""
+        你现在是 MonWeb (一个网站实时监控系统) 的专属 AI 助理。
+        现在有一个用户正在 Support 页面向你求助。
+        
+        请遵循以下严格规则：
+        1. 语气必须非常人性化、像一个懂技术的老前辈一样轻松。
+        2. 回答必须精简，直接切中要点，不要长篇大论。
+        3. 绝对、绝对、绝对不要使用任何 Markdown 的星号 (*) 来进行加粗或做列表！纯文本输出即可。
+        4. 如果用户问的问题和网站监控无关，请幽默地把它拉回 MonWeb 系统的话题上。
+        
+        用户的问题是：
+        {user_message}
+        """
+
+        print(f"[Support AI] 正在思考用户问题: {user_message}")
+        
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        
+        # 拿到文本后，为了100%确保没有星号，我们在后端做一次暴力替换清洗
+        clean_reply = response.text.strip().replace('*', '')
+        print(clean_reply)
+
+        return jsonify({"status": "success", "reply": clean_reply}), 200
+
+    except Exception as e:
+        print(f"[Support AI] 发生错误: {e}")
+        return jsonify({"status": "error", "message": "Oops! 我的大脑短路了一下，请稍后再试。"}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
