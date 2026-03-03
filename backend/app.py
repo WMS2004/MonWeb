@@ -497,5 +497,103 @@ def support_chat():
         print(f"[Support AI] 发生错误: {e}")
         return jsonify({"status": "error", "message": "Oops! 我的大脑短路了一下，请稍后再试。"}), 500
 
+# --- 6. 用户管理 API (/api/users) ---
+@app.route('/api/users', methods=['GET'])
+def get_users():
+    users = User.query.all()
+    output = []
+    for u in users:
+        output.append({
+            "id": u.id,
+            "username": u.username,
+            "email": u.email,  # 返回给前端展示
+            "role": u.role
+        })
+    return jsonify(output)
+
+@app.route('/api/users', methods=['POST'])
+def create_user():
+    data = request.json
+    # 确保接收 email 和必需字段
+    if not data or 'username' not in data or 'password' not in data or 'email' not in data:
+        return jsonify({"error": "Invalid data (missing fields)"}), 400
+    
+    # 检查用户名或邮箱是否已存在
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({"error": "Username already exists"}), 400
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({"error": "Email already exists"}), 400
+        
+    new_user = User(
+        username=data['username'],
+        email=data['email'],       # 存入数据库
+        password=data['password'], 
+        role=data.get('role', 'User')
+    )
+    
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({"message": "User created successfully!", "id": new_user.id}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/users/<int:id>', methods=['DELETE'])
+def delete_user(id):
+    user = User.query.get_or_404(id)
+    
+    # 后端防呆逻辑：绝对不允许删除 Admin
+    if user.role == 'Admin':
+        return jsonify({"error": "Permission Denied: Cannot delete an Admin user."}), 403
+        
+    try:
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({"message": "User deleted successfully!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# --- 7. 更新/编辑用户 API ---
+@app.route('/api/users/<int:id>', methods=['PUT'])
+def update_user(id):
+    user = User.query.get_or_404(id)
+    
+    # 后端防呆逻辑：不允许随意修改 Admin 账号的权限
+    if user.role == 'Admin':
+        return jsonify({"error": "Permission Denied: Cannot modify an Admin user."}), 403
+        
+    data = request.json
+    if not data:
+        return jsonify({"error": "Invalid data"}), 400
+        
+    # 检查用户名和邮箱是否与其他用户冲突 (排除自己)
+    if 'username' in data and data['username'] != user.username:
+        if User.query.filter_by(username=data['username']).first():
+            return jsonify({"error": "Username already exists"}), 400
+            
+    if 'email' in data and data['email'] != user.email:
+        if User.query.filter_by(email=data['email']).first():
+            return jsonify({"error": "Email already exists"}), 400
+
+    # 执行更新
+    if 'username' in data: 
+        user.username = data['username']
+    if 'email' in data: 
+        user.email = data['email']
+    if 'password' in data and data['password'].strip() != "": 
+        user.password = data['password'] # 如果前端传了密码且不为空，则更新密码
+        
+    if 'role' in data: 
+        # 严格遵守矩阵：防止普通用户被改成 Admin
+        if data['role'] == 'Admin':
+            return jsonify({"error": "Cannot assign Admin role to existing users."}), 403
+        user.role = data['role']
+        
+    try:
+        db.session.commit()
+        return jsonify({"message": "User updated successfully!"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
