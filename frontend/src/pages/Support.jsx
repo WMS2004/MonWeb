@@ -75,12 +75,6 @@ function Support() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const chatEndRef = useRef(null);
-
-  // 每次聊天更新时，自动滚动到底部
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory]);
 
   const handleSendMessage = async (text) => {
     if (!text.trim()) return;
@@ -276,7 +270,6 @@ function Support() {
               Typing...
             </div>
           )}
-          <div ref={chatEndRef} />
         </div>
 
         {/* 输入框 */}

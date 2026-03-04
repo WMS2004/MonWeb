@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
+import { 
+  LayoutGrid, 
+  Globe, 
+  FileText, 
+  Bell, 
+  Users, 
+  HelpCircle, 
+  PlusCircle 
+} from 'lucide-react';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -12,34 +21,55 @@ const MainLayout = () => {
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     } else {
-      // 如果没有登录信息，强制跳回登录页 (安全拦截)
+      // 如果没有登录信息，强制跳回登录页
       navigate('/login');
     }
   }, [navigate]);
 
-  // 如果还没加载出用户信息，先不渲染 (避免闪烁)
   if (!user) return null; 
 
   const userRole = user.role;
   const userName = user.username;
 
-  // 侧边栏样式
+  // 1. 侧边栏整体样式 (采用截图中的深色背景)
   const sidebarStyle = {
-    width: '250px', backgroundColor: '#001529', color: '#fff',
-    display: 'flex', flexDirection: 'column', height: '100vh'
+    width: '260px', 
+    backgroundColor: '#1b2332', // 接近截图的深灰蓝色
+    color: '#fff',
+    display: 'flex', 
+    flexDirection: 'column', 
+    height: '100vh',
+    borderRight: '1px solid #273142'
   };
 
-  // 菜单项样式
-  const linkStyle = (path) => ({
-    display: 'block', padding: '15px 20px', textDecoration: 'none',
-    color: location.pathname === path ? '#1890ff' : 'rgba(255,255,255,0.65)',
-    backgroundColor: location.pathname === path ? '#111d2c' : 'transparent',
-    borderLeft: location.pathname === path ? '3px solid #1890ff' : '3px solid transparent'
-  });
-
-  // 根据当前路径动态设置顶部栏标题
-  let headerTitle = location.pathname.replace('/', '').toUpperCase();
-  if (location.pathname.startsWith('/website/')) headerTitle = 'WEBSITE DETAILS';
+  // 2. 核心：自定义菜单项组件 (完全复刻截图的视觉效果)
+  const NavItem = ({ to, icon: Icon, label }) => {
+    const isActive = location.pathname === to;
+    const [isHovered, setIsHovered] = useState(false);
+    
+    return (
+      <Link 
+        to={to} 
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '12px 16px',
+          textDecoration: 'none',
+          borderRadius: '10px', // 圆角设计
+          color: isActive ? '#ffffff' : (isHovered ? '#ffffff' : '#94a3b8'),
+          backgroundColor: isActive ? '#2563eb' : (isHovered ? '#273142' : 'transparent'), // 亮蓝色高亮
+          fontWeight: isActive ? '600' : '400',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+        <span style={{ fontSize: '15px' }}>{label}</span>
+      </Link>
+    );
+  };
 
   // 处理退出登录
   const handleLogout = () => {
@@ -49,56 +79,59 @@ const MainLayout = () => {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* 1. 左侧侧边栏 */}
+      
+      {/* --- 左侧侧边栏 --- */}
       <aside style={sidebarStyle}>
-        <div style={{ padding: '20px', fontSize: '20px', fontWeight: 'bold', borderBottom: '1px solid #333' }}>
+        <div style={{ padding: '24px 20px', fontSize: '22px', fontWeight: 'bold', color: '#ffffff', letterSpacing: '0.5px' }}>
           MonWeb System
         </div>
         
-        <nav style={{ flex: 1, paddingTop: '10px' }}>
-          <Link to="/dashboard" style={linkStyle('/dashboard')}>📊 Dashboard</Link>
-          <Link to="/status" style={linkStyle('/status')}>🌐 Website Status</Link>
-          <Link to="/reports" style={linkStyle('/reports')}>📑 NLP Reports</Link>
-          <Link to="/alerts" style={linkStyle('/alerts')}>🔔 Alerts</Link>
-          
-          <div style={{ padding: '10px 20px', fontSize: '12px', color: '#999', marginTop: '10px' }}>MANAGEMENT</div>
+        {/* 导航菜单区 (增加 gap 实现间距) */}
+        <nav style={{ flex: 1, padding: '0 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <NavItem to="/dashboard" icon={LayoutGrid} label="Dashboard" />
+          <NavItem to="/status" icon={Globe} label="Website Status" />
+          <NavItem to="/reports" icon={FileText} label="NLP Reports" />
+          <NavItem to="/alerts" icon={Bell} label="Alerts" />
           
           {/* RBAC: 只有 Admin 和 Technical 可以看到 Add Website */}
           {(userRole === 'Admin' || userRole === 'Technical') && (
-            <Link to="/add-website" style={linkStyle('/add-website')}>➕ Add Website</Link>
+            <NavItem to="/add-website" icon={PlusCircle} label="Add Website" />
           )}
           
           {/* RBAC: 只有 Admin 可以看到 Users 管理 */}
           {userRole === 'Admin' && (
-            <Link to="/users" style={linkStyle('/users')}>👥 Users</Link>
+            <NavItem to="/users" icon={Users} label="Users" />
           )}
 
-          <div style={{ padding: '10px 20px', fontSize: '12px', color: '#999', marginTop: '10px' }}>HELP</div>
-          <Link to="/support" style={linkStyle('/support')}>❓ Support</Link>
+          <div style={{ margin: '8px 0', height: '1px', backgroundColor: '#273142' }}></div>
+
+          <NavItem to="/support" icon={HelpCircle} label="Support" />
         </nav>
 
-        {/* 左下角：当前用户 Profile (点击跳转) */}
-        <div style={{ padding: '20px', borderTop: '1px solid #333', backgroundColor: '#000c17' }}>
+        {/* 左下角：当前用户 Profile */}
+        <div style={{ padding: '20px', backgroundColor: '#141b27' }}>
           <Link to="/profile" style={{ color: 'white', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '16px' }}>
+            <div style={{ 
+              width: '36px', height: '36px', borderRadius: '50%', 
+              backgroundColor: '#2563eb', display: 'flex', alignItems: 'center', 
+              justifyContent: 'center', fontWeight: 'bold', fontSize: '16px' 
+            }}>
               {userName.charAt(0).toUpperCase()}
             </div>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{userName}</div>
-              <div style={{ fontSize: '12px', color: '#8c8c8c' }}>View Profile</div>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f1f5f9' }}>{userName}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>View Profile</div>
             </div>
           </Link>
         </div>
       </aside>
 
-      {/* 2. 右侧主内容区 */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#f0f2f5' }}>
+      {/* --- 右侧主内容区 --- */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
         {/* 顶部栏 */}
-        <header style={{ height: '64px', background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,21,41,.08)' }}>
-          <h3 style={{ margin: 0 }}>{headerTitle}</h3>
+        <header style={{ height: '64px', background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', borderBottom: '1px solid #e2e8f0' }}>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            {/* 右上角：动态 Role 徽章 */}
             <span style={{ 
               padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold',
               backgroundColor: userRole === 'Admin' ? '#eff6ff' : userRole === 'Technical' ? '#f0fdf4' : '#f3f4f6',

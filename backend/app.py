@@ -194,19 +194,20 @@ def manual_scan():
     scan_all_websites()
     return jsonify({"message": "Scan completed successfully!"})
 
-# --- 添加新网站 API ---
+# --- 1. 添加新网站 API (更新：支持存储全部字段) ---
 @app.route('/api/websites', methods=['POST'])
 def add_website():
     data = request.json
     if not data or 'name' not in data or 'url' not in data:
         return jsonify({"error": "Invalid data"}), 400
     
-    # 简单的逻辑：不管前端选 HTTP 还是 Ping，我们后端暂时都先存下来
-    # 真正的高级检测逻辑以后再根据 type 细分
     new_site = Website(
         name=data['name'],
         url=data['url'],
         interval=int(data.get('interval', 5)),
+        timeout=int(data.get('timeout', 10)),           # 新增：保存超时设置
+        monitor_type=data.get('checkType', 'http'),     # 新增：保存检测类型
+        ai_enabled=bool(data.get('aiEnabled', True)),   # 新增：保存AI开关
         status="Unknown"
     )
     
@@ -214,6 +215,29 @@ def add_website():
         db.session.add(new_site)
         db.session.commit()
         return jsonify({"message": "Website added!", "id": new_site.id}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# --- 2. 编辑/更新网站 API (全新增加) ---
+@app.route('/api/websites/<int:id>', methods=['PUT'])
+def update_website(id):
+    site = Website.query.get_or_404(id)
+    data = request.json
+    if not data:
+        return jsonify({"error": "Invalid data"}), 400
+        
+    # 逐一更新传过来的字段
+    if 'name' in data: site.name = data['name']
+    if 'url' in data: site.url = data['url']
+    if 'interval' in data: site.interval = int(data['interval'])
+    if 'timeout' in data: site.timeout = int(data['timeout'])
+    if 'checkType' in data: site.monitor_type = data['checkType']
+    if 'aiEnabled' in data: site.ai_enabled = bool(data['aiEnabled'])
+    
+    try:
+        db.session.commit()
+        return jsonify({"message": "Website updated successfully!"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -239,15 +263,15 @@ def login():
     username = data['username']
     password = data['password']
     
-    # 在 User 表中查询匹配的用户
     user = User.query.filter_by(username=username).first()
     
-    # 验证用户名和密码 (当前为明文对比)
     if user and user.password == password:
         return jsonify({
             "status": "success", 
             "message": "Login successful",
             "user": {
+                "id": user.id,              # 👇 新增：必须返回 ID
+                "email": user.email,        # 👇 新增：必须返回 Email
                 "username": user.username, 
                 "role": user.role
             }
@@ -557,37 +581,35 @@ def delete_user(id):
 @app.route('/api/users/<int:id>', methods=['PUT'])
 def update_user(id):
     user = User.query.get_or_404(id)
-    
-    # 后端防呆逻辑：不允许随意修改 Admin 账号的权限
-    if user.role == 'Admin':
-        return jsonify({"error": "Permission Denied: Cannot modify an Admin user."}), 403
-        
     data = request.json
     if not data:
         return jsonify({"error": "Invalid data"}), 400
         
-    # 检查用户名和邮箱是否与其他用户冲突 (排除自己)
+    # --- 安全逻辑修改 ---
+    # 如果前端传了 role，我们需要验证权限
+    if 'role' in data:
+        # 不允许将现有账号提升为 Admin
+        if user.role != 'Admin' and data['role'] == 'Admin':
+            return jsonify({"error": "Cannot assign Admin role to existing users."}), 403
+        # 不允许降级 Admin
+        if user.role == 'Admin' and data['role'] != 'Admin':
+            return jsonify({"error": "Cannot downgrade an Admin user."}), 403
+        user.role = data['role']
+
+    # 检查重名和重邮箱
     if 'username' in data and data['username'] != user.username:
         if User.query.filter_by(username=data['username']).first():
             return jsonify({"error": "Username already exists"}), 400
+        user.username = data['username']
             
     if 'email' in data and data['email'] != user.email:
         if User.query.filter_by(email=data['email']).first():
             return jsonify({"error": "Email already exists"}), 400
-
-    # 执行更新
-    if 'username' in data: 
-        user.username = data['username']
-    if 'email' in data: 
         user.email = data['email']
+
+    # 修改密码
     if 'password' in data and data['password'].strip() != "": 
-        user.password = data['password'] # 如果前端传了密码且不为空，则更新密码
-        
-    if 'role' in data: 
-        # 严格遵守矩阵：防止普通用户被改成 Admin
-        if data['role'] == 'Admin':
-            return jsonify({"error": "Cannot assign Admin role to existing users."}), 403
-        user.role = data['role']
+        user.password = data['password'] 
         
     try:
         db.session.commit()

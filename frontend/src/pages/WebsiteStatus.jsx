@@ -254,7 +254,14 @@ const WebsiteStatus = () => {
                         
                         {/* 只有 Admin 和 Technical 可以看到 Edit 按钮 */}
                         {(userRole === 'Admin' || userRole === 'Technical') && (
-                          <button style={iconButtonStyle} title="Edit"><Edit2 size={18} /></button>
+                          <button 
+                            // 👇 修改这里：跳转时通过 state 传递当前网站的 ID
+                            onClick={() => navigate('/add-website', { state: { editSiteId: site.id } })}
+                            style={iconButtonStyle} 
+                            title="Edit"
+                          >
+                            <Edit2 size={18} />
+                          </button>
                         )}
                         
                         {/* 只有 Admin 可以看到 Delete 按钮 */}
