@@ -44,11 +44,20 @@ class Website(db.Model):
     interval = db.Column(db.Integer, default=5)      # 监控频率 (分钟)
     status = db.Column(db.String(20), default='Unknown') # Up, Down, Warning
     last_checked = db.Column(db.DateTime, default=datetime.now)
-    # 新增字段 (为了匹配你的设计图)
     timeout = db.Column(db.Integer, default=10)        # 超时阈值
     monitor_type = db.Column(db.String(20), default='http') # http 或 ping
     ai_enabled = db.Column(db.Boolean, default=True)   # 是否启用 AI
+    is_muted = db.Column(db.Boolean, default=False) # 是否静默 (不发通知)
     logs = db.relationship('MonitoringLog', backref='website', lazy=True, cascade="all, delete-orphan") # 关联日志表，删除网站时也删除相关日志
+
+class AlertSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    browser_notify = db.Column(db.Boolean, default=True)
+    sound_enabled = db.Column(db.Boolean, default=True)
+    fail_count = db.Column(db.Integer, default=2) # 触发次数
+    smart_mute = db.Column(db.Boolean, default=True) # 智能静音
+    mp3_url = db.Column(db.String(500), default='https://actions.google.com/sounds/v1/alarms/beep_short.ogg')
 
 # 监控日志表 (存历史数据用来画图)
 class MonitoringLog(db.Model):
@@ -184,7 +193,8 @@ def get_websites():
             "url": site.url,
             "status": site.status,
             "last_checked": site.last_checked.strftime("%H:%M:%S") if site.last_checked else "Never",
-            "response_time": res_time  # 👇 新增：把响应时间传给前端！
+            "response_time": res_time,  # 👇 新增：把响应时间传给前端！
+            "is_muted": site.is_muted
         })
     return jsonify(output)
 
@@ -234,6 +244,7 @@ def update_website(id):
     if 'timeout' in data: site.timeout = int(data['timeout'])
     if 'checkType' in data: site.monitor_type = data['checkType']
     if 'aiEnabled' in data: site.ai_enabled = bool(data['aiEnabled'])
+    if 'is_muted' in data: site.is_muted = bool(data['is_muted'])
     
     try:
         db.session.commit()
@@ -616,6 +627,67 @@ def update_user(id):
         return jsonify({"message": "User updated successfully!"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# 新增：获取与保存 Alert 设置
+@app.route('/api/alerts/settings/<int:user_id>', methods=['GET', 'POST'])
+def manage_alert_settings(user_id):
+    if request.method == 'GET':
+        setting = AlertSetting.query.filter_by(user_id=user_id).first()
+        if not setting:
+            return jsonify({
+                "browserNotify": True, "soundEnabled": True, "failCount": 2, 
+                "smartMute": True, "mp3Url": "https://actions.google.com/sounds/v1/alarms/beep_short.ogg"
+            })
+        return jsonify({
+            "browserNotify": setting.browser_notify, "soundEnabled": setting.sound_enabled,
+            "failCount": setting.fail_count, "smartMute": setting.smart_mute, "mp3Url": setting.mp3_url
+        })
+    else:
+        data = request.json
+        setting = AlertSetting.query.filter_by(user_id=user_id).first()
+        if not setting:
+            setting = AlertSetting(user_id=user_id)
+            db.session.add(setting)
+        
+        setting.browser_notify = data.get('browserNotify', True)
+        setting.sound_enabled = data.get('soundEnabled', True)
+        setting.fail_count = data.get('failCount', 2)
+        setting.smart_mute = data.get('smartMute', True)
+        setting.mp3_url = data.get('mp3Url', 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg')
+        db.session.commit()
+        return jsonify({"message": "Settings saved"})
+
+# 新增：单站静音切换
+@app.route('/api/websites/<int:id>/mute', methods=['PUT'])
+def toggle_site_mute(id):
+    site = Website.query.get_or_404(id)
+    site.is_muted = request.json.get('is_muted', False)
+    db.session.commit()
+    return jsonify({"message": "Mute status updated"})
+
+# 👇 新增：获取全站 Top 30 警报/异常历史记录
+@app.route('/api/alerts/history', methods=['GET'])
+def get_alert_history():
+    # 联表查询：找出状态码非200，或者响应时间为0（宕机），或者状态标记为Down的记录
+    logs = db.session.query(MonitoringLog, Website).join(Website).filter(
+        db.or_(
+            MonitoringLog.status_code != 200,
+            MonitoringLog.response_time == 0,
+            MonitoringLog.status == 'Down'
+        )
+    ).order_by(MonitoringLog.timestamp.desc()).limit(30).all()
+
+    output = []
+    for log, site in logs:
+        output.append({
+            "id": log.id,
+            "website_name": site.name,
+            "url": site.url,
+            "status_code": log.status_code,
+            "response_time": log.response_time,
+            "time": log.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        })
+    return jsonify(output)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

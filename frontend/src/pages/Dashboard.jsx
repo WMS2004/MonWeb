@@ -174,7 +174,7 @@ const Dashboard = () => {
       {/* --- C. 底部大图表 (暂时保留 Mock Data) --- */}
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', height: '350px' }}>
         <h3 style={{ margin: '0 0 20px 0' }}>Response Time Trend</h3>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="99%" height="100%">
           <LineChart data={mockChartData}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="time" />

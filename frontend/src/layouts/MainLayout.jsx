@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import { 
   LayoutGrid, 
@@ -15,6 +15,10 @@ const MainLayout = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
+  // --- 全局警报引擎相关 State & Ref ---
+  const failTrackerRef = useRef({}); // 记录每个网站连续失败的次数: { "site_1": 1, "site_2": 3 }
+  const lastCheckedMap = useRef({}); // 核心：记录后端上次扫描的时间戳
+
   // 页面加载时获取当前登录的用户信息
   useEffect(() => {
     const storedUser = localStorage.getItem('monweb_user');
@@ -25,6 +29,81 @@ const MainLayout = () => {
       navigate('/login');
     }
   }, [navigate]);
+
+// 🌟 核心：全局后台静默警报引擎 (Alert Engine)
+  useEffect(() => {
+    // 【修复1】：未登录、或者正在登录页时，绝对不执行轮询！
+    if (!user || location.pathname === '/login') return;
+
+    const checkWebsiteStatus = async () => {
+      try {
+        // 去后端拿取真实的警报设置
+        let settings = { browserNotify: true, soundEnabled: true };
+        try {
+           const setRes = await fetch(`http://localhost:5000/api/alerts/settings/${user.id}`);
+           if (setRes.ok) settings = await setRes.json();
+        } catch(e) {
+           console.log("无法获取用户配置，使用默认配置");
+        }
+
+        const res = await fetch('http://localhost:5000/api/websites');
+        const sites = await res.json();
+
+        let newlyDownSites = []; // 存放本次扫描发现的宕机网站
+
+        sites.forEach(site => {
+          // 【静音拦截】：如果被单独静音，直接无视
+          if (site.is_muted) return;
+
+          if (site.status === 'Down') {
+            // 【轰炸机制核心】：只要后端扫描的时间变了（说明刚扫完一次），我们就判定一次
+            if (lastCheckedMap.current[site.id] !== site.last_checked) {
+              
+              failTrackerRef.current[site.id] = (failTrackerRef.current[site.id] || 0) + 1;
+              lastCheckedMap.current[site.id] = site.last_checked;
+
+              // 只要达到或超过设置的 failCount 阈值，就加入警报名单！(意味着不恢复就会一直弹)
+              if (failTrackerRef.current[site.id] >= settings.failCount) {
+                newlyDownSites.push(site.name);
+              }
+            }
+          } else {
+            // 如果恢复 Up，重置计数器
+            failTrackerRef.current[site.id] = 0;
+            lastCheckedMap.current[site.id] = site.last_checked;
+          }
+        });
+
+        // 触发最终的弹窗与声音（合并防风暴）
+        if (newlyDownSites.length > 0) {
+          if (settings.soundEnabled && settings.mp3Url) {
+            const audio = new Audio(settings.mp3Url);
+            audio.play().catch(e => console.log("Audio blocked by browser"));
+          }
+
+          if (settings.browserNotify && Notification.permission === 'granted') {
+            const title = `🚨 监控警报：${newlyDownSites.length} 个服务宕机！`;
+            // 如果超过3个，截断文字防止弹窗撑爆
+            let bodyText = newlyDownSites.length > 3 
+              ? `${newlyDownSites.slice(0, 3).join(', ')}...等网站` 
+              : newlyDownSites.join(', ');
+            
+            new Notification(title, { 
+              body: `离线目标: ${bodyText}\n系统将持续播报，直到服务恢复或被您手动静音。`,
+              icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png'
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Alert Engine Error:", error);
+      }
+    };
+
+    const intervalId = setInterval(checkWebsiteStatus, 15000);
+    checkWebsiteStatus(); 
+
+    return () => clearInterval(intervalId);
+  }, [user, location.pathname]); // user 状态改变时才会重新挂载
 
   if (!user) return null; 
 
