@@ -39,31 +39,34 @@ const DetectionCard = ({ title, desc, icon: Icon, active, onClick }) => (
 const WebsiteForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  
-  // 👇 核心：接收从 WebsiteStatus 传过来的编辑目标 ID
   const editSiteId = location.state?.editSiteId; 
 
+  // 👇 将 checkType 改为 checkTypes 数组，默认勾选 http
   const [formData, setFormData] = useState({
-    name: '', url: '', interval: 5, timeout: 10, checkType: 'http', aiEnabled: true
+    name: '', url: '', interval: 5, timeout: 10, checkTypes: ['http'], aiEnabled: true
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoading, setIsLoading] = useState(!!editSiteId); // 如果是编辑模式，先显示加载
+  const [isLoading, setIsLoading] = useState(!!editSiteId);
 
-  // 👇 核心逻辑：如果是编辑模式，组件加载时去后端拉取该网站的数据，并自动填充
   useEffect(() => {
     if (editSiteId) {
-      // 借用详情接口获取完整配置
       fetch(`http://localhost:5000/api/websites/${editSiteId}/logs`)
         .then(res => res.json())
         .then(data => {
           if (data && data.website) {
+            // 👇 解析后端的 monitor_type 字段 (例如 "http,ping")
+            let loadedTypes = ['http'];
+            if (data.website.monitor_type) {
+              loadedTypes = data.website.monitor_type.split(',');
+            }
+
             setFormData({
               name: data.website.name || '',
               url: data.website.url || '',
               interval: data.website.interval || 5,
               timeout: data.website.timeout || 10,
-              checkType: data.website.monitor_type || 'http',
-              aiEnabled: data.website.ai_enabled !== false // 默认 true
+              checkTypes: loadedTypes,
+              aiEnabled: data.website.ai_enabled !== false 
             });
           }
           setIsLoading(false);
@@ -82,9 +85,27 @@ const WebsiteForm = () => {
     }));
   };
 
-  // 👇 核心逻辑：智能判断是调用 POST(新建) 还是 PUT(更新)
+  // 👇 处理多选逻辑：如果已存在则移除，如果不存在则添加
+  const toggleCheckType = (type) => {
+    setFormData(prev => {
+      const currentTypes = prev.checkTypes;
+      if (currentTypes.includes(type)) {
+        return { ...prev, checkTypes: currentTypes.filter(t => t !== type) };
+      } else {
+        return { ...prev, checkTypes: [...currentTypes, type] };
+      }
+    });
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    // 👇 验证：必须至少选择一种监控类型
+    if (formData.checkTypes.length === 0) {
+      alert("Please select at least one detection type.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const payload = {
@@ -92,11 +113,11 @@ const WebsiteForm = () => {
       url: formData.url,
       interval: parseInt(formData.interval),
       timeout: parseInt(formData.timeout),
-      checkType: formData.checkType,
+      // 👇 将数组转为字符串 "http,ping" 发给后端
+      checkType: formData.checkTypes.join(','), 
       aiEnabled: formData.aiEnabled
     };
 
-    // 如果有 editSiteId 就用 PUT 请求更新，否则用 POST 添加
     const url = editSiteId 
       ? `http://localhost:5000/api/websites/${editSiteId}` 
       : 'http://localhost:5000/api/websites';
@@ -108,7 +129,6 @@ const WebsiteForm = () => {
       body: JSON.stringify(payload),
     })
     .then(res => {
-      // 成功后，跳回到 Status 列表页
       if (res.ok) navigate('/status'); 
       else alert("Operation failed, please check backend logs.");
     })
@@ -116,11 +136,8 @@ const WebsiteForm = () => {
     .finally(() => setIsSubmitting(false));
   };
 
-  if (isLoading) {
-    return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading configuration...</div>;
-  }
+  if (isLoading) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading configuration...</div>;
 
-  // 动态变更页面文案
   const pageTitle = editSiteId ? "Edit Monitoring Site" : "Add New Monitoring Site";
   const pageDesc = editSiteId ? "Modify configuration for the selected website." : "Configure monitoring parameters for a new website.";
   const submitText = editSiteId ? "Save Changes" : "＋ Add Website";
@@ -150,13 +167,26 @@ const WebsiteForm = () => {
         </div>
 
         <div>
-          <label style={{ fontSize: '14px', fontWeight: '600', color: '#333', marginBottom: '10px', display: 'block' }}>Detection Type</label>
+          <label style={{ fontSize: '14px', fontWeight: '600', color: '#333', marginBottom: '10px', display: 'block' }}>Detection Type (Multiple choices)</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <DetectionCard title="HTTP/HTTPS Detect" desc="Detect website HTTP response status" icon={Globe} active={formData.checkType === 'http'} onClick={() => setFormData({...formData, checkType: 'http'})} />
-            <DetectionCard title="ICMP Ping Detect" desc="Detect server network connectivity (Latency)" icon={Activity} active={formData.checkType === 'ping'} onClick={() => setFormData({...formData, checkType: 'ping'})} />
+            <DetectionCard 
+              title="HTTP/HTTPS Detect" 
+              desc="Detect website HTTP response status" 
+              icon={Globe} 
+              active={formData.checkTypes.includes('http')} 
+              onClick={() => toggleCheckType('http')} 
+            />
+            <DetectionCard 
+              title="ICMP Ping Detect" 
+              desc="Detect server network connectivity (Latency)" 
+              icon={Activity} 
+              active={formData.checkTypes.includes('ping')} 
+              onClick={() => toggleCheckType('ping')} 
+            />
           </div>
         </div>
 
+        {/* ... (下方 Interval, Timeout 和 AI 功能代码保持不变) ... */}
         <div style={{ display: 'flex', gap: '20px' }}>
           <InputGroup label="Detection frequency">
             <select name="interval" value={formData.interval} onChange={handleChange} style={inputStyle}>

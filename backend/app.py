@@ -387,13 +387,13 @@ def generate_ai_report():
         time_range = data.get('timeRange', '7d')
         target_site = data.get('targetSite', 'all')
         
-        print(f"[AI Report] 正在提取数据库记录... 范围: {time_range}, 目标: {target_site}")
+        print(f"[AI Report] Retrieving database records... Scope: {time_range}, Target: {target_site}")
         
         # 1. 从数据库提取真实的监控日志 (此处提取最近 200 条作为样本)
         logs = MonitoringLog.query.order_by(MonitoringLog.timestamp.desc()).limit(200).all()
         
         if not logs:
-            return jsonify({"status": "error", "message": "数据库中尚无监控数据，请等待系统运行一段时间后再生成报告。"}), 400
+            return jsonify({"status": "error", "message": "There is no monitoring data in the database yet. Please wait for the system to run for a while before generating a report."}), 400
             
         # 2. 在后端进行基础的数据清洗与聚合
         total_requests = len(logs)
@@ -414,33 +414,33 @@ def generate_ai_report():
         
         # 构建要喂给 AI 的统计字典
         db_stats = {
-            "总检测次数": total_requests,
-            "平均响应时间 (ms)": round(avg_latency, 2),
-            "整体可用性": f"{uptime_percent:.2f}%",
-            "各类错误发生次数": errors
+            "Total Detection Count": total_requests,
+            "Average Response Time (ms)": round(avg_latency, 2),
+            "Overall Availability": f"{uptime_percent:.2f}%",
+            "Incident Counts by Type": errors
         }
 
         # 3. 构建严密的 Prompt (提示词)
         prompt = f"""
-        你是一个拥有10年经验的高级 AIOps 与网络安全架构师。
-        请基于以下最新的网站监控数据，用中文生成一份专业的系统诊断报告。
+        You are a senior AIOps and cybersecurity architect with 10 years of experience.
+        Please generate a professional system diagnostic report based on the following latest website monitoring data.
         
-        监控数据：
+        Monitoring Data:
         {json.dumps(db_stats, ensure_ascii=False)}
 
-        【重要强制要求】
-        你必须且只能返回合法的 JSON 格式数据，绝对不要包含任何 markdown 代码块标记 (比如 ```json )，直接输出花括号开头的原生 JSON 字符串。
-        JSON 必须严格符合以下结构：
+        【Important Mandatory Requirements】
+        You must return only valid JSON data, and absolutely do not include any markdown code block markers (such as ```json`). Output the raw JSON string starting with curly braces.
+        JSON It must strictly conform to the following structure:
         {{
-            "summary": "执行摘要（3-4句话的总体评价，请结合数据中的可用性和响应时间来写）",
-            "healthScore": "健康评分，只能从 A, B, C, D 中选一个 (如果没有错误就是A，错误多就是C或D)",
-            "incidentAnalysis": "故障与根因分析详细段落 (如果错误为0，就表扬系统极度稳定；如果有错误，请像专家一样合理推测原因，比如服务器过载、网络波动等)",
-            "insights": ["性能或安全洞察点1", "性能或安全洞察点2"],
-            "recommendations": ["具体运维建议1", "具体运维建议2", "具体运维建议3"]
+            "summary": "Execution Summary (3-4 sentences for overall evaluation, please combine availability and response time data)",
+            "healthScore": "Health Score, can only be selected from A, B, C, D (if no errors then A, many errors then C or D)",
+            "incidentAnalysis": "Incident and Root Cause Analysis Detailed Paragraph (if no errors, praise the system's extreme stability; if there are errors, speculate on causes like server overload, network fluctuations, etc.)",
+            "insights": ["Performance or Security Insight 1", "Performance or Security Insight 2"],
+            "recommendations": ["Specific maintenance recommendations 1", "Specific maintenance recommendations 2", "Specific maintenance recommendations 3"]
         }}
         """
 
-        print("[AI Report] 正在调用 Gemini 2.5 Flash 大模型分析数据...")
+        print("[AI Report] Calling Gemini 2.5 Flash large model to analyze data....")
         
         # 4. 调用新版 Gemini API
         response = ai_client.models.generate_content(
@@ -449,7 +449,7 @@ def generate_ai_report():
         )
         
         response_text = response.text.strip()
-        print("\n========== Gemini AI 原始返回数据 ==========")
+        print("\n========== Gemini AI Raw returned data ==========")
         print(response_text)
         print("==========================================\n")
         
@@ -502,20 +502,21 @@ def support_chat():
 
         # 核心：通过严格的 Prompt 设定 AI 的人设和回答格式
         prompt = f"""
-        你现在是 MonWeb (一个网站实时监控系统) 的专属 AI 助理。
-        现在有一个用户正在 Support 页面向你求助。
+        You are the exclusive AI Assistant for MonWeb (a real-time website monitoring system).
+        A user is currently asking for help on the Support page.
         
-        请遵循以下严格规则：
-        1. 语气必须非常人性化、像一个懂技术的老前辈一样轻松。
-        2. 回答必须精简，直接切中要点，不要长篇大论。
-        3. 绝对、绝对、绝对不要使用任何 Markdown 的星号 (*) 来进行加粗或做列表！纯文本输出即可。
-        4. 如果用户问的问题和网站监控无关，请幽默地把它拉回 MonWeb 系统的话题上。
+        Please strictly follow these rules:
+        1. Tone must be highly humanized, relaxed like an experienced tech senior.
+        2. Responses must be concise, getting straight to the point without long paragraphs.
+        3. ABSOLUTELY NEVER use any Markdown asterisks (*) for bolding or lists! Pure text output only.
+        4. If the user asks a question unrelated to website monitoring, humorously steer the conversation back to the MonWeb system.
+        5. You MUST reply entirely in English.
         
-        用户的问题是：
+        The user's question is:
         {user_message}
         """
 
-        print(f"[Support AI] 正在思考用户问题: {user_message}")
+        print(f"[Support AI] Thinking about user issues: {user_message}")
         
         response = ai_client.models.generate_content(
             model='gemini-2.5-flash',
@@ -530,7 +531,7 @@ def support_chat():
 
     except Exception as e:
         print(f"[Support AI] 发生错误: {e}")
-        return jsonify({"status": "error", "message": "Oops! 我的大脑短路了一下，请稍后再试。"}), 500
+        return jsonify({"status": "error", "message": "Oops! My brain short-circuited for a moment. Please try again later."}), 500
 
 # --- 6. 用户管理 API (/api/users) ---
 @app.route('/api/users', methods=['GET'])
