@@ -33,11 +33,11 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true); 
   const [scanning, setScanning] = useState(false); 
 
-  // 👇 --- 新增：AI Insight 专属 State --- 👇
+  // AI Insight 专属 State
   const [aiInsight, setAiInsight] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
 
-  // --- 核心功能：从后端获取数据 ---
+  // 从后端获取数据
   const fetchWebsites = () => {
     setLoading(true);
     fetch('http://localhost:5000/api/websites')
@@ -52,7 +52,7 @@ const Dashboard = () => {
       });
   };
 
-  // --- 手动触发扫描 ---
+  // 手动触发扫描
   const handleScan = () => {
     setScanning(true);
     fetch('http://localhost:5000/api/scan', { method: 'POST' })
@@ -67,7 +67,7 @@ const Dashboard = () => {
       });
   };
 
-  // 👇 --- 新增：调用 AI 接口进行分析 --- 👇
+  // 调用 AI 接口进行分析
   const handleAnalyze = () => {
     setAnalyzing(true);
     setAiInsight(null); // 清空上次的结果
@@ -86,13 +86,13 @@ const Dashboard = () => {
           const rootCause = data.data.incidentAnalysis;
           setAiInsight({ summary, rootCause });
         } else {
-          setAiInsight({ error: data.message || "分析失败，请稍后重试。" });
+          setAiInsight({ error: data.message || "Analysis failed, please try again later." });
         }
         setAnalyzing(false);
       })
       .catch(error => {
         console.error("AI Analysis failed:", error);
-        setAiInsight({ error: "网络请求失败，请确保后端正常运行且 AI API Key 有效。" });
+        setAiInsight({ error: "Network request failed, please ensure the backend is running and the AI API Key is valid." });
         setAnalyzing(false);
       });
   };
@@ -146,7 +146,14 @@ const Dashboard = () => {
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '10px',
+            maxHeight: '350px',
+            overflowY: 'auto',
+            paddingRight: '10px' // 给滚动条留出空间
+            }}>
             {loading && !scanning ? (
               <p style={{ color: '#666', padding: '20px', textAlign: 'center' }}>Connecting to MonWeb Brain...</p>
             ) : websites.length === 0 ? (
@@ -191,7 +198,7 @@ const Dashboard = () => {
               <span style={{ fontSize: '20px' }}>✨</span>
               <h3 style={{ margin: 0, color: '#4F46E5' }}>AI Insights</h3>
             </div>
-            {/* 新增 Analyze 按钮 */}
+            {/* Analyze 按钮 */}
             <button 
               onClick={handleAnalyze} 
               disabled={analyzing}
@@ -215,7 +222,15 @@ const Dashboard = () => {
             </button>
           </div>
 
-          <div style={{ color: '#555', lineHeight: '1.6', fontSize: '14px', flex: 1, overflowY: 'auto' }}>
+          <div style={{ 
+            color: '#555', 
+            lineHeight: '1.6', 
+            fontSize: '14px', 
+            flex: 1, 
+            maxHeight: '350px',
+            overflowY: 'auto',
+            paddingRight: '10px' // 给滚动条留出空间 
+            }}>
             {analyzing ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '10px', color: '#6366F1' }}>
                 <span className="spin-animation">✨</span>
@@ -265,7 +280,31 @@ const Dashboard = () => {
           </LineChart>
         </ResponsiveContainer>
       </div>
-
+      {/* 👇 补充全局样式（滚动条美化 + 旋转动画） 👇 */}
+      <style>{`
+        .spin-animation {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          100% { transform: rotate(360deg); }
+        }
+        /* 隐藏滚动条但保留滚动功能 (可选修饰) */
+        ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+          background: #f1f5f9; 
+          border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: #cbd5e1; 
+          border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8; 
+        }
+      `}</style>
     </div>
   );
 };

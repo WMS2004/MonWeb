@@ -78,15 +78,15 @@ const UserManagement = () => {
       } else {
         try {
           const errData = await res.json();
-          alert(errData.error || "更新失败");
+          alert(errData.error || "Update Failed");
         } catch(e) {
-          alert("后端服务器异常，请检查后端运行状态！"); 
+          alert("The backend server is malfunctioning. Please check the backend's running status!"); 
         }
       }
     })
     .catch(err => {
       console.error(err);
-      alert("网络错误或后端未开启！");
+      alert("Network error or backend not running!");
     });
   };
 
@@ -110,12 +110,12 @@ const UserManagement = () => {
           setUserToDelete({ id: null, username: '' }); // 清空状态
         } else {
           const errData = await res.json();
-          alert(errData.error || "删除失败");
+          alert(errData.error || "Delete Failed");
         }
       })
       .catch(err => {
         console.error(err);
-        alert("网络错误");
+        alert("Network error or backend not running!");
       });
   };
 
@@ -132,68 +132,68 @@ const UserManagement = () => {
       {/* 顶部标题栏 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '24px', color: '#111827' }}>用户管理</h1>
-          <p style={{ margin: '5px 0 0', color: '#6b7280', fontSize: '14px' }}>管理系统用户和权限</p>
+          <h1 style={{ margin: 0, fontSize: '24px', color: '#111827' }}>User Management</h1>
+          <p style={{ margin: '5px 0 0', color: '#6b7280', fontSize: '14px' }}>Manage system users and permissions</p>
         </div>
         <button 
           onClick={() => setShowForm(!showForm)}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
         >
           {showForm ? <X size={18} /> : <UserPlus size={18} />}
-          {showForm ? '取消创建' : '创建新用户'}
+          {showForm ? 'Cancel Creation' : 'Create New User'}
         </button>
       </div>
 
       {/* 权限等级说明卡片 */}
       <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#1e3a8a', fontWeight: 'bold' }}>
-          <Lock size={18} /> 权限等级说明
+          <Lock size={18} /> Permission Level Description
         </div>
         <div style={{ display: 'flex', gap: '20px', marginBottom: '16px' }}>
           <div style={{ flex: 1, backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-            <div style={{ fontWeight: 'bold', color: '#2563eb', marginBottom: '5px' }}>Admin (管理员)</div>
-            <div style={{ fontSize: '13px', color: '#6b7280' }}>完全权限：可以管理用户、添加/编辑/删除网站</div>
+            <div style={{ fontWeight: 'bold', color: '#2563eb', marginBottom: '5px' }}>Admin (Administrator)</div>
+            <div style={{ fontSize: '13px', color: '#6b7280' }}>Full permissions: Can manage users, add/edit/delete websites</div>
           </div>
           <div style={{ flex: 1, backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-            <div style={{ fontWeight: 'bold', color: '#16a34a', marginBottom: '5px' }}>Technical (技术)</div>
-            <div style={{ fontSize: '13px', color: '#6b7280' }}>部分管理权限：可以添加和编辑网站，查看所有数据</div>
+            <div style={{ fontWeight: 'bold', color: '#16a34a', marginBottom: '5px' }}>Technical (Technical)</div>
+            <div style={{ fontSize: '13px', color: '#6b7280' }}>Partial management permissions: Can add and edit websites, view all data</div>
           </div>
           <div style={{ flex: 1, backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-            <div style={{ fontWeight: 'bold', color: '#4b5563', marginBottom: '5px' }}>User (查看者)</div>
-            <div style={{ fontSize: '13px', color: '#6b7280' }}>只读权限：仅可查看监控数据和报告</div>
+            <div style={{ fontWeight: 'bold', color: '#4b5563', marginBottom: '5px' }}>User (Viewer)</div>
+            <div style={{ fontSize: '13px', color: '#6b7280' }}>Read-only permissions: Can only view monitoring data and reports</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#b45309' }}>
-          <AlertTriangle size={14} /> 注意：系统保持单一 Admin 权限，Admin 不能创建另一个 Admin
+          <AlertTriangle size={14} /> Note: The system maintains a single Admin permission, and Admin cannot create another Admin
         </div>
       </div>
 
       {/* 创建新用户表单 */}
       {showForm && (
         <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb' }}>
-          <h3 style={{ margin: '0 0 20px 0', fontSize: '16px' }}>填写新用户信息</h3>
+          <h3 style={{ margin: '0 0 20px 0', fontSize: '16px' }}>Fill in new user information</h3>
           <form onSubmit={handleCreateUser} style={{ display: 'flex', gap: '20px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: '200px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>用户名 *</label>
-              <input required type="text" placeholder="例如: john_tech" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} style={inputStyle} />
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Username *</label>
+              <input required type="text" placeholder="e.g., john_tech" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} style={inputStyle} />
             </div>
             <div style={{ flex: 1, minWidth: '200px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>邮箱 *</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Email *</label>
               <input required type="email" placeholder="john@company.com" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} style={inputStyle} />
             </div>
             <div style={{ flex: 1, minWidth: '200px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>临时密码 *</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Password *</label>
               <input required type="password" placeholder="••••••••" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} style={inputStyle} />
             </div>
             <div style={{ flex: 1, minWidth: '200px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>分配角色 *</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Assign Role *</label>
               <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={inputStyle}>
-                <option value="Technical">Technical (部分管理权限)</option>
-                <option value="User">User (只读权限)</option>
+                <option value="Technical">Technical</option>
+                <option value="User">User</option>
               </select>
             </div>
             <button type="submit" style={{ padding: '10px 24px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', height: '42px', transition: '0.2s' }}>
-              保存用户
+              Save User
             </button>
           </form>
         </div>
@@ -202,49 +202,49 @@ const UserManagement = () => {
       {/* 用户列表表格 */}
       <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
-          <h3 style={{ margin: 0, fontSize: '16px', color: '#111827' }}>所有用户</h3>
+          <h3 style={{ margin: 0, fontSize: '16px', color: '#111827' }}>All users</h3>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
           <thead style={{ backgroundColor: '#f9fafb' }}>
             <tr>
-              <th style={{ padding: '16px 20px', color: '#6b7280', fontWeight: '500' }}>用户名</th>
-              <th style={{ padding: '16px 20px', color: '#6b7280', fontWeight: '500' }}>邮箱</th>
-              <th style={{ padding: '16px 20px', color: '#6b7280', fontWeight: '500' }}>角色</th>
-              <th style={{ padding: '16px 20px', color: '#6b7280', fontWeight: '500', textAlign: 'right' }}>操作</th>
+              <th style={{ padding: '16px 20px', color: '#6b7280', fontWeight: '500' }}>Username</th>
+              <th style={{ padding: '16px 20px', color: '#6b7280', fontWeight: '500' }}>Email</th>
+              <th style={{ padding: '16px 20px', color: '#6b7280', fontWeight: '500' }}>Role</th>
+              <th style={{ padding: '16px 20px', color: '#6b7280', fontWeight: '500', textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#6b7280' }}>加载中...</td></tr>
+              <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#6b7280' }}>Loading...</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#6b7280' }}>暂无用户数据</td></tr>
+              <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#6b7280' }}>No user data available</td></tr>
             ) : (
               users.map((user) => (
                 <tr key={user.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '16px 20px', fontWeight: '500', color: '#111827' }}>
                     {user.username}
                     {user.role === 'Admin' && (
-                      <span style={{ marginLeft: '8px', fontSize: '12px', color: '#4b5563', backgroundColor: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', fontWeight: 'normal' }}>当前用户</span>
+                      <span style={{ marginLeft: '8px', fontSize: '12px', color: '#4b5563', backgroundColor: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', fontWeight: 'normal' }}>Current User</span>
                     )}
                   </td>
-                  <td style={{ padding: '16px 20px', color: '#4b5563' }}>{user.email || '未设置'}</td>
+                  <td style={{ padding: '16px 20px', color: '#4b5563' }}>{user.email || 'Not set'}</td>
                   <td style={{ padding: '16px 20px' }}>{renderRoleBadge(user.role)}</td>
                   <td style={{ padding: '16px 20px', textAlign: 'right' }}>
                     {user.role === 'Admin' ? (
-                      <span style={{ color: '#9ca3af', fontSize: '13px' }}>不可编辑</span>
+                      <span style={{ color: '#9ca3af', fontSize: '13px' }}>Uneditable</span>
                     ) : (
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
                         <button 
                           onClick={() => handleEditClick(user)} 
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563' }} 
-                          title="编辑用户"
+                          title="Edit User"
                         >
                           <Edit size={18} />
                         </button>
                         <button 
                           onClick={() => handleDeleteClick(user)} // <--- 这里改为了触发弹窗
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }} 
-                          title="删除用户"
+                          title="Delete User"
                         >
                           <Trash2 size={18} />
                         </button>
@@ -278,34 +278,35 @@ const UserManagement = () => {
               <X size={20} />
             </button>
 
-            <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', color: '#111827' }}>编辑用户</h2>
-            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#6b7280' }}>修改用户信息和权限</p>
+            <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', color: '#111827' }}>Edit User</h2>
+            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#6b7280' }}>Modify user information and permissions</p>
 
+            {/* User Information Form */}
             <form onSubmit={handleUpdateUser} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>用户名</label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>Username</label>
                 <input required type="text" value={editingUser.username} onChange={e => setEditingUser({...editingUser, username: e.target.value})} style={inputStyle} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>邮箱</label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>Email</label>
                 <input required type="email" value={editingUser.email} onChange={e => setEditingUser({...editingUser, email: e.target.value})} style={{...inputStyle, backgroundColor: '#f3f4f6'}} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>新密码 (不修改请留空)</label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>New Password (Leave blank to keep current)</label>
                 <input type="password" placeholder="••••••••" value={editingUser.password} onChange={e => setEditingUser({...editingUser, password: e.target.value})} style={{...inputStyle, backgroundColor: '#f3f4f6'}} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>角色</label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>Role</label>
                 <select value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value})} style={{...inputStyle, backgroundColor: '#f3f4f6'}}>
-                  <option value="Technical">Technical (部分管理权限)</option>
-                  <option value="User">User (只读权限)</option>
+                  <option value="Technical">Technical</option>
+                  <option value="User">User</option>
                 </select>
-                <div style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>注意：Admin 不能创建另一个 Admin</div>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>Note: Admin cannot create another Admin</div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button type="button" onClick={() => setIsEditModalOpen(false)} style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: 'white', color: '#374151', fontWeight: '600', cursor: 'pointer' }}>取消</button>
-                <button type="submit" style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', backgroundColor: '#0f172a', color: 'white', fontWeight: '600', cursor: 'pointer' }}>保存更改</button>
+                <button type="button" onClick={() => setIsEditModalOpen(false)} style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: 'white', color: '#374151', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', backgroundColor: '#0f172a', color: 'white', fontWeight: '600', cursor: 'pointer' }}>Save Changes</button>
               </div>
             </form>
           </div>

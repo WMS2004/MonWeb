@@ -47,13 +47,23 @@ const Profile = () => {
     setIsSaving(true);
     setMessage({ type: '', text: '' });
 
-    // 准备发送的数据（密码如果没填就不发送）
+    // 准备发送的数据
     const payload = {
       username: formData.username,
       email: formData.email
     };
+    // 密码修改/验证逻辑：
     if (formData.newPassword.trim() !== '') {
-      payload.password = formData.newPassword;
+      // 1. 如果用户填写了新密码，但没填旧密码，直接拦截
+      if (formData.currentPassword.trim() === '') {
+        setMessage({ type: 'error', text: 'Please enter your Current Password to change it.' });
+        setIsSaving(false);
+        return; // 终止提交
+      }
+      
+      // 2. 将新密码和当前密码一起发给后端
+      payload.password = formData.newPassword; // 新密码
+      payload.currentPassword = formData.currentPassword; // 原密码（用于后端验证）
     }
 
     fetch(`http://localhost:5000/api/users/${formData.id}`, {
@@ -64,7 +74,7 @@ const Profile = () => {
     .then(async (res) => {
       const data = await res.json();
       if (res.ok) {
-        setMessage({ type: 'success', text: '资料更新成功！' });
+        setMessage({ type: 'success', text: 'Data update successful!' });
         
         // 关键：更新 localStorage 中的缓存，防止刷新后变回原样
         const updatedStorage = {
@@ -78,11 +88,11 @@ const Profile = () => {
         // 清空密码框
         setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '' }));
       } else {
-        setMessage({ type: 'error', text: data.error || '更新失败' });
+        setMessage({ type: 'error', text: data.error || 'Data update failed' });
       }
     })
     .catch(err => {
-      setMessage({ type: 'error', text: '网络错误，无法连接到服务器' });
+      setMessage({ type: 'error', text: 'Network error, unable to connect to server' });
     })
     .finally(() => setIsSaving(false));
   };
@@ -98,7 +108,7 @@ const Profile = () => {
         >
           <ArrowLeft size={24} />
         </button>
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>个人资料设置</h1>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>Profile Settings</h1>
       </div>
 
       {/* 消息提示 */}
@@ -115,7 +125,7 @@ const Profile = () => {
 
       {/* 区域 1：基本信息 (展示区) */}
       <div style={cardStyle}>
-        <h2 style={sectionTitleStyle}>基本信息</h2>
+        <h2 style={sectionTitleStyle}>Basic Information</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginTop: '16px' }}>
           
           {/* 渐变头像 */}
@@ -158,21 +168,21 @@ const Profile = () => {
           
           {/* 编辑资料 */}
           <div>
-            <h2 style={sectionTitleStyle}>编辑资料</h2>
+            <h2 style={sectionTitleStyle}>Edit Information</h2>
             
             <div style={inputGroupStyle}>
-              <div style={labelStyle}><User size={16} /> 用户名</div>
+              <div style={labelStyle}><User size={16} /> Username</div>
               <input 
                 required type="text" name="username" value={formData.username} onChange={handleChange}
-                style={inputStyle} placeholder="输入您的用户名"
+                style={inputStyle} placeholder="Enter your username"
               />
             </div>
 
             <div style={inputGroupStyle}>
-              <div style={labelStyle}><Mail size={16} /> 邮箱地址</div>
+              <div style={labelStyle}><Mail size={16} /> Email Address</div>
               <input 
                 required type="email" name="email" value={formData.email} onChange={handleChange}
-                style={inputStyle} placeholder="输入您的邮箱"
+                style={inputStyle} placeholder="Enter your email"
               />
             </div>
           </div>
@@ -181,24 +191,24 @@ const Profile = () => {
 
           {/* 更改密码 */}
           <div>
-            <h2 style={sectionTitleStyle}>更改密码</h2>
+            <h2 style={sectionTitleStyle}>Change Password</h2>
             
             <div style={inputGroupStyle}>
-              <div style={labelStyle}><Lock size={16} /> 当前密码 (安全验证用 - 暂时留空即可)</div>
+              <div style={labelStyle}><Lock size={16} /> Current Password</div>
               <input 
                 type="password" name="currentPassword" value={formData.currentPassword} onChange={handleChange}
-                style={inputStyle} placeholder="输入当前密码"
+                style={inputStyle} placeholder="Enter current password"
               />
             </div>
 
             <div style={inputGroupStyle}>
-              <div style={labelStyle}><Lock size={16} /> 新密码</div>
+              <div style={labelStyle}><Lock size={16} /> New Password</div>
               <input 
                 type="password" name="newPassword" value={formData.newPassword} onChange={handleChange}
-                style={inputStyle} placeholder="输入新密码"
+                style={inputStyle} placeholder="Enter new password"
               />
               <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
-                留空则不修改密码
+                Leave blank to keep current password
               </div>
             </div>
           </div>
@@ -215,7 +225,7 @@ const Profile = () => {
                 opacity: isSaving ? 0.7 : 1
               }}
             >
-              {isSaving ? '正在更新...' : '更新资料'}
+              {isSaving ? 'Updating...' : 'Update Information'}
             </button>
           </div>
 

@@ -102,14 +102,14 @@ const Alerts = () => {
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
       
       <div style={{ marginBottom: '30px' }}>
-        <h1 style={{ margin: '0 0 8px 0', fontSize: '24px', color: '#0f172a' }}>警报通知设置</h1>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>个性化您的监控警报配置及查看历史记录</p>
+        <h1 style={{ margin: '0 0 8px 0', fontSize: '24px', color: '#0f172a' }}>Alarm Notification Settings</h1>
+        <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Personalize your monitoring alert configurations and view history</p>
       </div>
 
       {isUserRole && (
         <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'flex', gap: '10px', alignItems: 'center', color: '#991b1b' }}>
           <ShieldAlert size={20} />
-          <span style={{ fontSize: '14px', fontWeight: 'bold' }}>权限受限：User 角色仅能查看配置，如需修改请联系 Admin。</span>
+          <span style={{ fontSize: '14px', fontWeight: 'bold' }}>Permission Limited: User role can only view configurations. Contact Admin to make changes.</span>
         </div>
       )}
 
@@ -117,11 +117,11 @@ const Alerts = () => {
         
         {/* 卡片 1：通知渠道 */}
         <div style={cardStyle}>
-          <div style={cardHeaderStyle}><Bell size={20} color="#475569" /> 通知渠道</div>
+          <div style={cardHeaderStyle}><Bell size={20} color="#475569" /> Notification Channels</div>
           <div style={{ ...itemBoxStyle, borderLeft: '4px solid #2563eb' }}>
             <div>
-              <div style={{ fontWeight: 'bold', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>浏览器弹窗通知</div>
-              <div style={{ fontSize: '13px', color: '#64748b' }}>在浏览器中显示实时警报弹窗（即使在其他标签页也会提示）</div>
+              <div style={{ fontWeight: 'bold', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>Browser Popup Notifications</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>Display real-time alert popups in the browser (even when on other tabs)</div>
             </div>
             <input 
               type="checkbox" disabled={isUserRole} checked={settings.browserNotify} 
@@ -133,39 +133,39 @@ const Alerts = () => {
 
         {/* 卡片 2：触发条件 */}
         <div style={cardStyle}>
-          <div style={cardHeaderStyle}><Zap size={20} color="#475569" /> 触发条件</div>
+          <div style={cardHeaderStyle}><Zap size={20} color="#475569" /> Trigger Conditions</div>
           <div style={{ marginBottom: '20px' }}>
-            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#334155', marginBottom: '8px' }}>连续失败次数</div>
+            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#334155', marginBottom: '8px' }}>Consecutive Failure Count</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input 
                 type="number" min="1" max="10" disabled={isUserRole} value={settings.failCount} 
                 onChange={(e) => handleChange('failCount', parseInt(e.target.value))}
                 style={{ width: '80px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }}
               />
-              <span style={{ fontSize: '14px', color: '#475569' }}>次后发送警报</span>
+              <span style={{ fontSize: '14px', color: '#475569' }}>An alarm Will be Sent Afterward.</span>
             </div>
             <div style={{ fontSize: '13px', color: '#64748b', marginTop: '8px' }}>
-              设置网站需要连续失败多少次才触发警报通知，此后每次后台扫描只要未恢复都会持续弹窗。
+              Set the number of consecutive failures required to trigger an alert notification. Subsequent scans will continue to display popups until the site is restored.
             </div>
           </div>
         </div>
 
         {/* 卡片 3：智能功能 & 声音设置 (移除了 MP3 URL 输入框) */}
         <div style={cardStyle}>
-          <div style={cardHeaderStyle}><Volume2 size={20} color="#8b5cf6" /> 智能功能 & 声音设置</div>
+          <div style={cardHeaderStyle}><Volume2 size={20} color="#8b5cf6" /> Smart Features & Sound Settings</div>
           
           <div style={{ ...itemBoxStyle, backgroundColor: '#faf5ff', borderColor: '#e9d5ff', marginBottom: '16px' }}>
             <div>
-              <div style={{ fontWeight: 'bold', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>智能静音模式</div>
-              <div style={{ fontSize: '13px', color: '#64748b' }}>AI 自动判断非关键性错误，减少打扰</div>
+              <div style={{ fontWeight: 'bold', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>Smart Mute Mode</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>AI automatically detects non-critical errors to reduce interruptions</div>
             </div>
             <input type="checkbox" disabled={isUserRole} checked={settings.smartMute} onChange={(e) => handleChange('smartMute', e.target.checked)} style={checkboxStyle} />
           </div>
 
           <div style={itemBoxStyle}>
             <div>
-              <div style={{ fontWeight: 'bold', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>通知声音</div>
-              <div style={{ fontSize: '13px', color: '#64748b' }}>警报触发时播放系统默认提示音</div>
+              <div style={{ fontWeight: 'bold', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>Notification Sound</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>Play system default notification sound when an alert is triggered</div>
             </div>
             <input type="checkbox" disabled={isUserRole} checked={settings.soundEnabled} onChange={(e) => handleChange('soundEnabled', e.target.checked)} style={checkboxStyle} />
           </div>
@@ -173,13 +173,13 @@ const Alerts = () => {
 
         {/* 卡片 4：独立单站静音 */}
         <div style={cardStyle}>
-          <div style={cardHeaderStyle}><Globe size={20} color="#0ea5e9" /> 独立目标网站静音 (Mute)</div>
+          <div style={cardHeaderStyle}><Globe size={20} color="#0ea5e9" /> Independent Target Website Silent (Mute)</div>
           <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px' }}>
-            已知报错的网站可单独屏蔽，被静音的网站无论宕机多久均不弹窗。
+            Known error websites can be individually blocked, and muted websites will not display popups regardless of how long they are down.
           </p>
           <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
             {isLoading ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>加载中...</div>
+              <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>Loading...</div>
             ) : websites.map((site, index) => (
               <div key={site.id} style={{ 
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
@@ -191,7 +191,7 @@ const Alerts = () => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                   <span style={{ fontSize: '13px', color: site.is_muted ? '#ef4444' : '#10b981', fontWeight: '600' }}>
-                    {site.is_muted ? '警报关闭' : '警报开启'}
+                    {site.is_muted ? 'Alert Disabled' : 'Alert Enabled'}
                   </span>
                   <input 
                     type="checkbox" disabled={isUserRole} checked={!site.is_muted} 
@@ -208,12 +208,12 @@ const Alerts = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <button onClick={handleTest} style={{ padding: '10px 20px', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', color: '#334155', fontWeight: 'bold', cursor: 'pointer' }}>
-              发送测试弹窗
+              Send Test Pop-up
             </button>
           </div>
           {!isUserRole && (
             <button onClick={handleSave} disabled={isSaving} style={{ padding: '12px 30px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer', opacity: isSaving ? 0.7 : 1 }}>
-              {isSaving ? '保存中...' : '保存设置'}
+              {isSaving ? 'Saving...' : 'Save Settings'}
             </button>
           )}
         </div>
@@ -221,19 +221,29 @@ const Alerts = () => {
         {/* --- 新增：自动更新的警报历史卡片 --- */}
         <div style={cardStyle}>
           <div style={cardHeaderStyle}>
-            <History size={20} color="#f59e0b" /> 警报历史记录 (Top 30)
+            <History size={20} color="#f59e0b" /> Alert History (Top 30)
           </div>
           <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px' }}>
-            实时显示最近发生的 30 条网站异常和宕机记录 (自动刷新)。
+            Displays The 30 Most Recent Website Anomalies and Outages in RealTtime (Automatically Refreshed).
           </p>
           
-          <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: '600' }}>发生时间</th>
-                  <th style={{ padding: '12px 16px', fontWeight: '600' }}>目标网站</th>
-                  <th style={{ padding: '12px 16px', fontWeight: '600' }}>状态</th>
+          <div style={{
+            maxHeight: '400px', 
+            overflowX: 'auto', 
+            border: '1px solid #e2e8f0', 
+            borderRadius: '8px' 
+            }}>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse', 
+              fontSize: '13px', 
+              textAlign: 'left' 
+              }}>
+              <thead style={{position: 'sticky', top: 0, zIndex: 10}}>
+                <tr style={{ backgroundColor: '#f8fafc', color: '#64748b' }}>
+                  <th style={{ padding: '12px 16px', fontWeight: '600' }}>Time of Occurrence</th>
+                  <th style={{ padding: '12px 16px', fontWeight: '600' }}>Target Website</th>
+                  <th style={{ padding: '12px 16px', fontWeight: '600' }}>Status</th>
                   <th style={{ padding: '12px 16px', fontWeight: '600' }}>HTTP Code</th>
                   <th style={{ padding: '12px 16px', fontWeight: '600' }}>Response Time</th>
                 </tr>
@@ -242,7 +252,7 @@ const Alerts = () => {
                 {alertHistory.length === 0 ? (
                   <tr>
                     <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
-                      太棒了！近期暂无任何系统警报记录。
+                      Great! There are currently no system alert records.
                     </td>
                   </tr>
                 ) : (

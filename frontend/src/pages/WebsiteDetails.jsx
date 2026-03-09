@@ -12,7 +12,7 @@ const WebsiteDetails = () => {
   const [data, setData] = useState({ website: {}, logs: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('ping');
 
   // --- 模拟 HTTP 监控数据 (保留需要的 TTFB 和状态码) ---
   const mockHttpData = {
@@ -55,8 +55,8 @@ const WebsiteDetails = () => {
   // 👇 2. 自动修正默认打开的标签页
   useEffect(() => {
     if (data.website.monitor_type) {
-      if (!hasPing && activeTab === 'overview') setActiveTab('http');
-      if (!hasHttp && activeTab === 'http') setActiveTab('overview');
+      if (!hasPing && activeTab === 'ping') setActiveTab('http');
+      if (!hasHttp && activeTab === 'http') setActiveTab('ping');
     }
   }, [data.website.monitor_type, hasPing, hasHttp]);
 
@@ -160,8 +160,8 @@ const WebsiteDetails = () => {
       {/* 👇 3. 动态 Tab Navigation --- */}
       <div style={{ display: 'flex', gap: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '0' }}>
         {hasPing && (
-          <button onClick={() => setActiveTab('overview')} style={getTabStyle(activeTab === 'overview')}>
-            <Activity size={18} /> Overview (Ping/Latency)
+          <button onClick={() => setActiveTab('ping')} style={getTabStyle(activeTab === 'ping')}>
+            <Activity size={18} /> Ping (Latency)
           </button>
         )}
         {hasHttp && (
@@ -172,9 +172,9 @@ const WebsiteDetails = () => {
       </div>
 
       {/* 👇 4. 动态 Tab Content --- */}
-      {activeTab === 'overview' && hasPing ? (
+      {activeTab === 'ping' && hasPing ? (
         // ==========================================
-        //  Tab 1: Overview (Ping)
+        //  Tab 1: Ping (Latency)
         // ==========================================
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease-in-out' }}>
           

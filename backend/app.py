@@ -621,8 +621,10 @@ def update_user(id):
 
     # 修改密码
     if 'password' in data and data['password'].strip() != "": 
-        user.password = data['password'] 
-        
+        current_password = data.get('currentPassword', '')
+        if user.password != current_password:
+            return jsonify({"error": "Current password is incorrect."}), 400
+        user.password = data['password']
     try:
         db.session.commit()
         return jsonify({"message": "User updated successfully!"}), 200
