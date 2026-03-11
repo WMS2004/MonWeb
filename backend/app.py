@@ -238,7 +238,7 @@ def scan_all_websites():
 # 只有在主进程才启动 Scheduler，防止 Debug 模式下启动两次
 if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     scheduler = BackgroundScheduler()
-    scheduler.add_job(func=scan_all_websites, trigger="interval", seconds=60) # 每60秒自动扫描
+    scheduler.add_job(func=scan_all_websites, trigger="interval", seconds=30) # 每30秒自动扫描
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown()) # 退出时关闭
 
