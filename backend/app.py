@@ -229,7 +229,7 @@ def scan_all_websites():
         # 使用线程池并发执行，max_workers 控制并发数量
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             # 传递 app 对象进去以重建上下文
-            futures = [executor.submit(execute_single_task, app, task.id) for task in tasks]
+            futures = [executor.submit(execute_single_task, app, task.id) for task in task_to_run]
             concurrent.futures.wait(futures)
             
         print("[Scheduler] Scan finished.\n")
@@ -238,6 +238,7 @@ def scan_all_websites():
 # 只有在主进程才启动 Scheduler，防止 Debug 模式下启动两次
 if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     scheduler = BackgroundScheduler()
+    # 每30秒扫描一次
     scheduler.add_job(func=scan_all_websites, trigger="interval", seconds=30) # 每30秒自动扫描
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown()) # 退出时关闭

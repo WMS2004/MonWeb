@@ -109,7 +109,7 @@ const Dashboard = () => {
           setWebsites(data);
         })
         .catch(error => console.error("Auto-refresh failed:", error));
-    }, 30000); // 30000 毫秒 = 30 秒
+    }, 15000); // 15000 毫秒 = 15 秒
 
     // 组件卸载时清理定时器，防止内存泄漏
     return () => clearInterval(intervalId);
