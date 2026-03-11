@@ -100,6 +100,19 @@ const Dashboard = () => {
   // 页面一加载就运行
   useEffect(() => {
     fetchWebsites();
+    // 设置定时器，每 30 秒自动静默获取一次最新数据
+    const intervalId = setInterval(() => {
+      // 注意这里不要设 setLoading(true)，否则页面会一直闪烁
+      fetch('http://localhost:5000/api/websites')
+        .then(response => response.json())
+        .then(data => {
+          setWebsites(data);
+        })
+        .catch(error => console.error("Auto-refresh failed:", error));
+    }, 30000); // 30000 毫秒 = 30 秒
+
+    // 组件卸载时清理定时器，防止内存泄漏
+    return () => clearInterval(intervalId);
   }, []);
 
   // 动态计算各个状态的网站数量

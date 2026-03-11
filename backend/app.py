@@ -10,7 +10,7 @@ from google import genai
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 
@@ -216,6 +216,15 @@ def scan_all_websites():
         if not tasks:
             print("[Scheduler] No tasks to scan.")
             return
+        task_to_run = []
+        now = datetime.now()
+        for task in tasks:
+            if not task.last_checked or now >= task.last_checked + timedelta(minutes=task.interval):
+                task_to_run.append(task)
+        if not task_to_run:
+            print("[Scheduler] No tasks are due for scanning at this time.")
+            return
+        print(f"[Scheduler] {len(task_to_run)} tasks are due for scanning.")
 
         # 使用线程池并发执行，max_workers 控制并发数量
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -256,10 +265,13 @@ def init_db():
         if not Website.query.first():
             # 预设测试网站
             sites_data = [
-                {"name": "Google DNS", "url": "8.8.8.8"},
-                {"name": "Cloudflare DNS", "url": "1.1.1.1"},
-                {"name": "Localhost", "url": "127.0.0.1"},
-                {"name": "Github", "url": "github.com"},
+                {"name": "Eye On The Ball", "url": "https://eyeontheballfilm.com/"},
+                {"name": "StarProperty Fair", "url": "https://fair.starproperty.my/"},
+                {"name": "Kirana", "url": "https://kirana.my/"},
+                {"name": "StarProperty Pullout", "url": "https://pullout.starproperty.my/"},
+                {"name": "Rage", "url": "https://www.rage.com.my/"},
+                {"name": "Kuntum", "url": "https://www.kuntum.com.my/"},
+                {"name": "Kuali Startup", "url": "https://startup.kuali.com/"},
                 {"name": "Fake Website", "url": "this-site-definitely-does-not-exist.com"}  # 测试宕机
             ]
             for s_data in sites_data:
@@ -314,10 +326,8 @@ def get_websites():
             overall_status = "Unknown"
         elif down_count == total_tasks:
             overall_status = "Down" # 全部挂了才是真挂了
-        elif down_count > 0:
-            overall_status = "Degraded" # 部分挂了 (比如禁Ping导致Ping不通，但HTTP通)
-        elif warning_count > 0:
-            overall_status = "Warning" # 延迟高
+        elif down_count > 0 or warning_count > 0:
+            overall_status = "Degraded" # 只要有部分任务 Down (如禁 Ping) 或者有任务高延迟，统统算 Warning
         else:
             overall_status = "Up" # 全绿
 
