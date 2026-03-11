@@ -182,17 +182,32 @@ const Dashboard = () => {
                   </div>
                   {/* 👇 关键新增：展示每个子监控项的微型徽章 👇 */}
                   <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
-                    {site.monitors && site.monitors.map(monitor => (
-                      <span key={monitor.id} style={{
-                        fontSize: '11px', padding: '2px 6px', borderRadius: '4px',
-                        backgroundColor: monitor.status === 'Up' ? '#dcfce7' : '#fee2e2',
-                        color: monitor.status === 'Up' ? '#166534' : '#991b1b',
-                        border: `1px solid ${monitor.status === 'Up' ? '#bbf7d0' : '#fecaca'}`
+                    {site.monitors && site.monitors.map(monitor => {
+                      // 1. 动态生成展示文本
+                      let displayText = monitor.type.toUpperCase();
+                      // 如果是 HTTP 监控，且有状态码 (比如 200, 404)，就拼接到名字后面
+                      if (monitor.type === 'http' && monitor.status_code) {
+                        displayText += ` ${monitor.status_code}`;
+                      }
+                      displayText += `: ${monitor.status}`;
+                      
+                      if (monitor.response_time) {
+                        displayText += ` (${monitor.response_time}ms)`;
+                    } return (
+                      <span key={monitor.id} 
+                      title={monitor.error || "Normal / No Errors"} // 鼠标悬停显示错误详情
+                      style={{
+                          fontSize: '11px', padding: '3px 8px', borderRadius: '4px',
+                          // 根据状态改变背景色 (加入 Warning 的黄色)
+                          backgroundColor: monitor.status === 'Up' ? '#dcfce7' : monitor.status === 'Warning' ? '#fef3c7' : '#fee2e2',
+                          color: monitor.status === 'Up' ? '#166534' : monitor.status === 'Warning' ? '#92400e' : '#991b1b',
+                          border: `1px solid ${monitor.status === 'Up' ? '#bbf7d0' : monitor.status === 'Warning' ? '#fde68a' : '#fecaca'}`,
+                          cursor: monitor.error ? 'help' : 'default' // 如果有错误，鼠标会变成问号
                       }}>
-                        {monitor.type.toUpperCase()}: {monitor.status}
-                        {monitor.response_time ? ` (${monitor.response_time}ms)` : ''}
+                        {displayText}
                       </span>
-                    ))}
+                    );
+                    })}
                   </div>
                 </div>
               ))

@@ -162,7 +162,7 @@ def http_check(url, timeout_sec):
 # 单站扫描函数，供多线程池调用
 def execute_single_task(app, task_id):
     with app.app_context():
-        task = MonitorTask.query.get(task_id)
+        task = db.session.get(MonitorTask, task_id)
         if not task: return
         site = task.website
 
@@ -181,7 +181,9 @@ def execute_single_task(app, task_id):
         # 2. 智能状态判断 (与旧逻辑类似)
         if not is_up:
             new_status = "Down"
-        elif latency > 400:
+        elif task.monitor_type == 'ping' and latency > 500:
+            new_status = "Warning"
+        elif task.monitor_type == 'http' and latency > 3000:
             new_status = "Warning"
         else:
             new_status = "Up"
@@ -218,7 +220,7 @@ def scan_all_websites():
         # 使用线程池并发执行，max_workers 控制并发数量
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             # 传递 app 对象进去以重建上下文
-            futures = [executor.submit(execute_single_task, app._get_current_object(), task.id) for task in tasks]
+            futures = [executor.submit(execute_single_task, app, task.id) for task in tasks]
             concurrent.futures.wait(futures)
             
         print("[Scheduler] Scan finished.\n")
@@ -289,6 +291,8 @@ def get_websites():
             # 找到该任务最近的一条日志提取延迟
             latest_log = MonitoringLog.query.filter_by(monitor_task_id=task.id).order_by(MonitoringLog.timestamp.desc()).first()
             res_time = latest_log.response_time if latest_log else None
+            s_code = latest_log.status_code if latest_log else None
+            err_msg = latest_log.error_details if latest_log else None
             
             tasks_data.append({
                 "id": task.id,
@@ -296,7 +300,9 @@ def get_websites():
                 "status": task.status, # Up, Down, Warning
                 "interval": task.interval,
                 "timeout": task.timeout,
-                "response_time": res_time
+                "response_time": res_time,
+                "status_code": s_code,
+                "error": err_msg
             })
             
             if task.status == 'Down': down_count += 1
@@ -820,20 +826,24 @@ def toggle_site_mute(id):
 # 👇 新增：获取全站 Top 30 警报/异常历史记录
 @app.route('/api/alerts/history', methods=['GET'])
 def get_alert_history():
-    # 联表查询：找出状态码非200，或者响应时间为0（宕机），或者状态标记为Down的记录
-    logs = db.session.query(MonitoringLog, Website).join(Website).filter(
-        db.or_(
-            MonitoringLog.status_code != 200,
-            MonitoringLog.response_time == 0,
-            MonitoringLog.status == 'Down'
-        )
-    ).order_by(MonitoringLog.timestamp.desc()).limit(30).all()
+    # 联表查询：通过 MonitorTask 作为桥梁，连接 Log 和 Website
+    logs = db.session.query(MonitoringLog, MonitorTask, Website)\
+        .join(MonitorTask, MonitoringLog.monitor_task_id == MonitorTask.id)\
+        .join(Website, MonitorTask.website_id == Website.id)\
+        .filter(
+            db.or_(
+                MonitoringLog.status_code != 200,
+                MonitoringLog.response_time == 0,
+                MonitoringLog.status == 'Down'
+            )
+        ).order_by(MonitoringLog.timestamp.desc()).limit(30).all()
 
     output = []
-    for log, site in logs:
+    # 注意：这里现在需要解包 3 个对象 (log, task, site)
+    for log, task, site in logs:
         output.append({
             "id": log.id,
-            "website_name": site.name,
+            "website_name": f"{site.name} ({task.monitor_type.upper()})", # 加上是HTTP还是PING挂了
             "url": site.url,
             "status_code": log.status_code,
             "response_time": log.response_time,
