@@ -4,6 +4,8 @@ import subprocess
 import requests
 import time
 import json 
+import concurrent.futures
+import random
 from google import genai
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -41,14 +43,27 @@ class Website(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False) # 比如 "Company Blog"
     url = db.Column(db.String(500), nullable=False)  # 比如 "https://google.com"
-    interval = db.Column(db.Integer, default=5)      # 监控频率 (分钟)
-    status = db.Column(db.String(20), default='Unknown') # Up, Down, Warning
-    last_checked = db.Column(db.DateTime, default=datetime.now)
-    timeout = db.Column(db.Integer, default=10)        # 超时阈值
-    monitor_type = db.Column(db.String(20), default='http') # http 或 ping
-    ai_enabled = db.Column(db.Boolean, default=True)   # 是否启用 AI
     is_muted = db.Column(db.Boolean, default=False) # 是否静默 (不发通知)
-    logs = db.relationship('MonitoringLog', backref='website', lazy=True, cascade="all, delete-orphan") # 关联日志表，删除网站时也删除相关日志
+    monitor_tasks = db.relationship('MonitorTask', backref='website', lazy=True, cascade="all, delete-orphan") # 关联监控任务表，删除网站时也删除相关任务
+
+class MonitorTask(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    website_id = db.Column(db.Integer, db.ForeignKey('website.id'), nullable=False)
+    monitor_type = db.Column(db.String(20), nullable=False) # 'http', 'ping', 未来可加 'ssl', 'dns'
+    interval = db.Column(db.Integer, default=5)      # 专属的监控频率
+    timeout = db.Column(db.Integer, default=10)      # 专属的超时阈值
+    status = db.Column(db.String(20), default='Unknown') # 当前任务是 Up 还是 Down
+    last_checked = db.Column(db.DateTime, default=datetime.now)
+
+# 监控日志表 (存历史数据用来画图)
+class MonitoringLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    monitor_task_id = db.Column(db.Integer, db.ForeignKey('monitor_task.id'), nullable=False)
+    response_time = db.Column(db.Float) # 毫秒 (ms)
+    status_code = db.Column(db.Integer) # 200, 404, 500
+    status = db.Column(db.String(20))   # "UP" or "DOWN"
+    error_details = db.Column(db.Text, nullable=True) # 可选：存储错误信息
+    timestamp = db.Column(db.DateTime, default=datetime.now)
 
 class AlertSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -59,79 +74,153 @@ class AlertSetting(db.Model):
     smart_mute = db.Column(db.Boolean, default=True) # 智能静音
     mp3_url = db.Column(db.String(500), default='https://actions.google.com/sounds/v1/alarms/beep_short.ogg')
 
-# 监控日志表 (存历史数据用来画图)
-class MonitoringLog(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    website_id = db.Column(db.Integer, db.ForeignKey('website.id'), nullable=False)
-    response_time = db.Column(db.Float) # 毫秒 (ms)
-    status_code = db.Column(db.Integer) # 200, 404, 500
-    status = db.Column(db.String(20))   # "UP" or "DOWN"
-    latency = db.Column(db.Float)       # 毫秒
-    timestamp = db.Column(db.DateTime, default=datetime.now)
-
-# --- 3. 核心监控逻辑 (你的 Python 脚本复活了！) ---
-def ping_host(host):
-    """
-    执行 Ping 命令，返回 (是否成功, 耗时ms)
-    """
+# 核心监控逻辑 PING
+def ping_host(host, timeout_sec):
+    # 执行 PING
     # Windows 使用 -n 1, Linux/Mac 使用 -c 1
     param = '-n' if platform.system().lower() == 'windows' else '-c'
-    command = ['ping', param, '1', host]
+    timeout_arg = '-w' if platform.system().lower() == 'windows' else '-W'
+    timeout_val = str(timeout_sec * 1000) if platform.system().lower() == 'windows' else str(timeout_sec)
+    command = ['ping', param, '1', timeout_arg, timeout_val, host]
     
     try:
         start_time = time.time()
         # 执行命令，禁止输出到控制台
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        end_time = time.time()
-        
-        duration = (end_time - start_time) * 1000 # 转换为毫秒
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout_sec + 2, text=True)
+        duration = (time.time() - start_time) * 1000 # 转换为毫秒
         
         if result.returncode == 0:
-            return True, round(duration, 2)
+            return True, round(duration, 2), 200, None
         else:
-            return False, 0
+            error_output = (result.stderr.strip() or result.stdout.strip())
+            if "could not find host" in error_output.lower() or "name or service not known" in error_output.lower():
+                return False, 0, 0, "DNS Resolution Failed: Host not found."
+            elif "timed out" in error_output.lower() or "100% loss" in error_output.lower():
+                return False, 0, 0, f"Ping Timeout: No response within {timeout_sec} seconds."
+            else:
+                return False, 0, 0, f"ICMP Error: {error_output[:500]}" # 截断太长的日志
+            return False, 0, 0, f"Ping Failed: {error_output[:500]}" # 截断太长的日志
+    except subprocess.TimeoutExpired:
+        return False, 0, 0, f"Process Error: Command execution exceeded {timeout_sec}s."
     except Exception as e:
-        print(f"Ping Error for {host}: {e}")
-        return False, 0
+        return False, 0, 0, f"System Exception: {str(e)}"
 
+# --- 定义全局的 User-Agent 池 ---
+USER_AGENT_POOL = [
+    # Windows - Chrome
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    # Windows - Edge
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0",
+    # Windows - Firefox
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    # macOS - Safari
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    # macOS - Chrome
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    # Linux - Chrome
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+]
+
+def http_check(url, timeout_sec):
+    """
+    HTTP 检查，返回: (是否成功, 耗时ms, 状态码, 详细错误信息)
+    """
+    target_url = url if url.startswith('http') else 'https://' + url
+    random_user_agent = random.choice(USER_AGENT_POOL)
+    headers = {
+        "User-Agent": random_user_agent,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7", # 告诉服务器接受英文和中文
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1", # 模拟浏览器自动尝试从 HTTP 升级到 HTTPS
+        "Sec-Fetch-Dest": "document",     # 现代浏览器发出的跨域请求防范头
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1"
+    }
+    try:
+        start_time = time.time()
+        # allow_redirects=True 允许跟随跳转
+        response = requests.get(target_url, headers=headers, timeout=timeout_sec, allow_redirects=True)
+        duration = (time.time() - start_time) * 1000
+        
+        if 200 <= response.status_code < 400:
+            return True, round(duration, 2), response.status_code, None
+        else:
+            # 捕获类似 404 Not Found, 502 Bad Gateway 这种具体错误
+            return False, round(duration, 2), response.status_code, f"HTTP Error {response.status_code}: {response.reason}"
+            
+    except requests.exceptions.Timeout:
+        return False, 0, 0, f"Connection Timeout: Server didn't respond in {timeout_sec}s."
+    except requests.exceptions.SSLError:
+        return False, 0, 0, "SSL Certificate Error: Invalid or expired certificate."
+    except requests.exceptions.ConnectionError:
+        return False, 0, 0, "Connection Refused: Server is down or DNS resolving failed."
+    except Exception as e:
+        return False, 0, 0, f"Request Exception: {str(e)}"
+
+# 单站扫描函数，供多线程池调用
+def execute_single_task(app, task_id):
+    with app.app_context():
+        task = MonitorTask.query.get(task_id)
+        if not task: return
+        site = task.website
+
+        target = site.url
+        is_up = False
+        latency, status_code = 0,0
+        error_msg = None
+
+        # 1. 根据类型分配检测任务
+        if task.monitor_type == 'ping':
+            clean_target = target.replace('https://', '').replace('http://', '').split('/')[0]
+            is_up, latency, status_code, error_msg = ping_host(clean_target, task.timeout)
+        elif task.monitor_type == 'http':
+            is_up, latency, status_code, error_msg = http_check(target, task.timeout)
+            
+        # 2. 智能状态判断 (与旧逻辑类似)
+        if not is_up:
+            new_status = "Down"
+        elif latency > 400:
+            new_status = "Warning"
+        else:
+            new_status = "Up"
+            
+        task.status = new_status
+        task.last_checked = datetime.now()
+        
+        # 3. 写入包含了【详细错误原因】的日志表！
+        new_log = MonitoringLog(
+            monitor_task_id=task.id,
+            response_time=latency,
+            status_code=status_code,
+            status=new_status,
+            error_details=error_msg # <- 这个就是喂给AI的灵魂数据！
+        )
+        db.session.add(new_log)
+        db.session.commit()
+        
+        log_text = f"[{task.monitor_type.upper()}] {site.name}: {new_status} ({latency}ms)"
+        if error_msg: log_text += f" -> Error: {error_msg}"
+        print(log_text)
+
+# 全站扫描函数，供定时器调用
 def scan_all_websites():
-    """
-    后台任务：扫描所有网站并更新数据库
-    """
+    """使用多线程池并发执行所有监控任务"""
     with app.app_context():
         print(f"\n[Scheduler] Starting scan at {datetime.now().strftime('%H:%M:%S')}...")
-        websites = Website.query.all()
+        tasks = MonitorTask.query.all()
         
-        for site in websites:
-            # 简单的逻辑：如果是 http 开头就不用处理，如果是 IP 或域名则直接用
-            target = site.url.replace('https://', '').replace('http://', '').split('/')[0]
-            
-            is_up, latency = ping_host(target)
-            
-            # --- 智能状态判断逻辑 ---
-            old_status = site.status
-            if not is_up:
-                new_status = "Down"
-            elif latency > 400: # 超过 400ms 算 Warning
-                new_status = "Warning"
-            else:
-                new_status = "Up"
-            
-            # 更新 Website 表状态
-            site.status = new_status
-            site.last_checked = datetime.now()
-            
-            # 插入历史日志 (MonitoringLog)
-            new_log = MonitoringLog(
-                website_id=site.id,
-                response_time=latency,
-                status_code=200 if is_up else 500 # 简单模拟状态码
-            )
-            db.session.add(new_log)
-            
-            print(f" - {site.name}: {new_status} ({latency}ms)")
+        if not tasks:
+            print("[Scheduler] No tasks to scan.")
+            return
 
-        db.session.commit()
+        # 使用线程池并发执行，max_workers 控制并发数量
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # 传递 app 对象进去以重建上下文
+            futures = [executor.submit(execute_single_task, app._get_current_object(), task.id) for task in tasks]
+            concurrent.futures.wait(futures)
+            
         print("[Scheduler] Scan finished.\n")
 
 # --- 4. 启动定时任务 ---
@@ -156,22 +245,32 @@ def init_db():
     with app.app_context():
         db.create_all()
 
-        # --- 新增：初始化 admin 用户 ---
+        # 初始化 admin 用户
         admin_user = User.query.filter_by(username='admin').first()
         if not admin_user:
             admin_user = User(username='admin', email='admin@monweb.com', password='1234', role='Admin')
             db.session.add(admin_user)
 
         if not Website.query.first():
-            # 添加几个更有趣的测试网站
-            sites = [
-                Website(name="Google DNS", url="8.8.8.8", status="Unknown"),
-                Website(name="Cloudflare DNS", url="1.1.1.1", status="Unknown"),
-                Website(name="Localhost", url="127.0.0.1", status="Unknown"),
-                Website(name="Github", url="github.com", status="Unknown"),
-                Website(name="Fake Website", url="this-site-definitely-does-not-exist.com", status="Unknown") # 测试宕机
+            # 预设测试网站
+            sites_data = [
+                {"name": "Google DNS", "url": "8.8.8.8"},
+                {"name": "Cloudflare DNS", "url": "1.1.1.1"},
+                {"name": "Localhost", "url": "127.0.0.1"},
+                {"name": "Github", "url": "github.com"},
+                {"name": "Fake Website", "url": "this-site-definitely-does-not-exist.com"}  # 测试宕机
             ]
-            db.session.add_all(sites)
+            for s_data in sites_data:
+                # 先创建网站
+                site = Website(name=s_data["name"], url=s_data["url"])
+                db.session.add(site)
+                db.session.commit() # 提交后 site.id 才有值
+                # 创建独立的监控任务
+                # HTTP 任务
+                http_task = MonitorTask(website_id=site.id, monitor_type='http', interval=5, timeout=10)
+                # PING 任务
+                ping_task = MonitorTask(website_id=site.id, monitor_type='ping', interval=1, timeout=10)
+                db.session.add_all([http_task, ping_task])
             db.session.commit()
             return jsonify({"message": "Database initialized with test data!"})
         return jsonify({"message": "Database already exists."})
@@ -181,19 +280,47 @@ def get_websites():
     websites = Website.query.all()
     output = []
     for site in websites:
-        # 👇 新增：去日志表里找该网站最新的一条扫描记录
-        latest_log = MonitoringLog.query.filter_by(website_id=site.id).order_by(MonitoringLog.timestamp.desc()).first()
-        
-        # 👇 新增：如果有记录，就提取 response_time
-        res_time = latest_log.response_time if latest_log else None
+        tasks_data = []
+        down_count = 0
+        warning_count = 0
+
+        # 遍历该网站名下的所有监控任务
+        for task in site.monitor_tasks:
+            # 找到该任务最近的一条日志提取延迟
+            latest_log = MonitoringLog.query.filter_by(monitor_task_id=task.id).order_by(MonitoringLog.timestamp.desc()).first()
+            res_time = latest_log.response_time if latest_log else None
+            
+            tasks_data.append({
+                "id": task.id,
+                "type": task.monitor_type,
+                "status": task.status, # Up, Down, Warning
+                "interval": task.interval,
+                "timeout": task.timeout,
+                "response_time": res_time
+            })
+            
+            if task.status == 'Down': down_count += 1
+            if task.status == 'Warning': warning_count += 1
+            
+        # --- 核心：计算该网站的综合状态 (Overall Status) ---
+        total_tasks = len(tasks_data)
+        if total_tasks == 0:
+            overall_status = "Unknown"
+        elif down_count == total_tasks:
+            overall_status = "Down" # 全部挂了才是真挂了
+        elif down_count > 0:
+            overall_status = "Degraded" # 部分挂了 (比如禁Ping导致Ping不通，但HTTP通)
+        elif warning_count > 0:
+            overall_status = "Warning" # 延迟高
+        else:
+            overall_status = "Up" # 全绿
 
         output.append({
             "id": site.id,
             "name": site.name,
             "url": site.url,
-            "status": site.status,
-            "last_checked": site.last_checked.strftime("%H:%M:%S") if site.last_checked else "Never",
-            "response_time": res_time,  # 👇 新增：把响应时间传给前端！
+            "status": overall_status,   # 👇 返回综合状态给大盘红绿灯
+            "monitors": tasks_data,     # 👇 把子任务也发给前端，用来显示小徽章
             "is_muted": site.is_muted
         })
     return jsonify(output)
@@ -211,45 +338,57 @@ def add_website():
     if not data or 'name' not in data or 'url' not in data:
         return jsonify({"error": "Invalid data"}), 400
     
-    new_site = Website(
-        name=data['name'],
-        url=data['url'],
-        interval=int(data.get('interval', 5)),
-        timeout=int(data.get('timeout', 10)),           # 新增：保存超时设置
-        monitor_type=data.get('checkType', 'http'),     # 新增：保存检测类型
-        ai_enabled=bool(data.get('aiEnabled', True)),   # 新增：保存AI开关
-        status="Unknown"
-    )
+    # 1. 先创建父级 Website
+    new_site = Website(name=data['name'], url=data['url'])
+    db.session.add(new_site)
+    db.session.flush() # 拿到 new_site.id 但先不提交
     
+    # 2. 遍历前端传来的监控任务数组
+    # 前端传过来的格式例如: "monitors": [{"type": "http", "interval": 5, "timeout": 10}, {"type": "ping", "interval": 1, "timeout": 2}]
+    monitors_data = data.get('monitors', [])
+    for m in monitors_data:
+        new_task = MonitorTask(
+            website_id=new_site.id,
+            monitor_type=m['type'],
+            interval=int(m.get('interval', 5)),
+            timeout=int(m.get('timeout', 10))
+        )
+        db.session.add(new_task)
+        
     try:
-        db.session.add(new_site)
         db.session.commit()
-        return jsonify({"message": "Website added!", "id": new_site.id}), 201
+        return jsonify({"message": "Website and tasks added!", "id": new_site.id}), 201
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
 
 # --- 2. 编辑/更新网站 API (全新增加) ---
 @app.route('/api/websites/<int:id>', methods=['PUT'])
 def update_website(id):
     site = Website.query.get_or_404(id)
     data = request.json
-    if not data:
-        return jsonify({"error": "Invalid data"}), 400
-        
-    # 逐一更新传过来的字段
+    
     if 'name' in data: site.name = data['name']
     if 'url' in data: site.url = data['url']
-    if 'interval' in data: site.interval = int(data['interval'])
-    if 'timeout' in data: site.timeout = int(data['timeout'])
-    if 'checkType' in data: site.monitor_type = data['checkType']
-    if 'aiEnabled' in data: site.ai_enabled = bool(data['aiEnabled'])
     if 'is_muted' in data: site.is_muted = bool(data['is_muted'])
     
+    # 更新监控任务：最简单的做法是先删除旧任务，再根据前端传来的重新创建
+    if 'monitors' in data:
+        MonitorTask.query.filter_by(website_id=site.id).delete()
+        for m in data['monitors']:
+            new_task = MonitorTask(
+                website_id=site.id,
+                monitor_type=m['type'],
+                interval=int(m.get('interval', 5)),
+                timeout=int(m.get('timeout', 10))
+            )
+            db.session.add(new_task)
+            
     try:
         db.session.commit()
         return jsonify({"message": "Website updated successfully!"}), 200
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 # 2. 删除网站 API
@@ -295,16 +434,30 @@ def login():
 def get_website_logs(id):
     site = Website.query.get_or_404(id)
     
-    # 从数据库获取该网站最近的 30 条日志记录
-    logs = MonitoringLog.query.filter_by(website_id=id).order_by(MonitoringLog.timestamp.desc()).limit(30).all()
+    # 联表获取该网站名下所有任务的最近日志 (取30条)
+    logs = db.session.query(MonitoringLog, MonitorTask)\
+             .join(MonitorTask)\
+             .filter(MonitorTask.website_id == id)\
+             .order_by(MonitoringLog.timestamp.desc()).limit(30).all()
     
-    # 倒序排列，因为我们要画图，时间必须是从左到右（过去 -> 现在）
     logs_data = []
-    for log in reversed(logs):
+    for log, task in reversed(logs):
         logs_data.append({
             "time": log.timestamp.strftime("%H:%M:%S"),
             "response_time": log.response_time,
-            "status_code": log.status_code
+            "status_code": log.status_code,
+            "type": task.monitor_type.upper(), # 区分是 HTTP 还是 PING 的日志
+            "error": log.error_details
+        })
+        
+    # 提取它的监控任务配置
+    monitors_data = []
+    for task in site.monitor_tasks:
+        monitors_data.append({
+            "type": task.monitor_type,
+            "interval": task.interval,
+            "timeout": task.timeout,
+            "status": task.status
         })
         
     return jsonify({
@@ -312,12 +465,8 @@ def get_website_logs(id):
             "id": site.id,
             "name": site.name,
             "url": site.url,
-            "status": site.status,
-            "interval": site.interval,
-            "timeout": site.timeout,
-            "monitor_type": site.monitor_type,
-            "ai_enabled": site.ai_enabled,
-            "monitoring_since": site.last_checked.strftime("%Y/%m/%d") if site.last_checked else "N/A"
+            "is_muted": site.is_muted,
+            "monitors": monitors_data # 把配置数组发给前端
         },
         "logs": logs_data
     })

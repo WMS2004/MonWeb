@@ -164,25 +164,35 @@ const Dashboard = () => {
             ) : (
               websites.map((site) => (
                 <div key={site.id} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '12px', border: '1px solid #eee', borderRadius: '8px',
-                  borderLeft: `4px solid ${site.status === 'Down' ? '#EF4444' : site.status === 'Warning' ? '#F59E0B' : '#10B981'}`
+                  padding: '12px', border: '1px solid #eee', borderRadius: '8px', marginBottom: '10px',
+                  borderLeft: `4px solid ${site.status === 'Down' ? '#EF4444' : site.status === 'Warning' || site.status === 'Degraded' ? '#F59E0B' : '#10B981'}`
                 }}>
-                  <div>
-                    <div style={{ fontWeight: '600' }}>{site.name}</div>
-                    <div style={{ fontSize: '12px', color: '#999' }}>{site.url}</div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: '600' }}>{site.name}</div>
+                      <div style={{ fontSize: '12px', color: '#999' }}>{site.url}</div>
+                    </div>
                     <span style={{ 
-                      backgroundColor: site.status === 'Down' ? '#FEE2E2' : site.status === 'Warning' ? '#FFFBEB' : '#ECFDF5', 
-                      color: site.status === 'Down' ? '#B91C1C' : site.status === 'Warning' ? '#B45309' : '#047857',
+                      backgroundColor: site.status === 'Down' ? '#FEE2E2' : site.status === 'Warning' || site.status === 'Degraded' ? '#FFFBEB' : '#ECFDF5', 
+                      color: site.status === 'Down' ? '#B91C1C' : site.status === 'Warning' || site.status === 'Degraded' ? '#B45309' : '#047857',
                       padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'
                     }}>
                       {(site.status || 'Unknown').toUpperCase()}
                     </span>
-                    <span style={{ fontSize: '12px', color: '#ccc' }}>
-                       Last: {site.last_checked}
-                    </span>
+                  </div>
+                  {/* 👇 关键新增：展示每个子监控项的微型徽章 👇 */}
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                    {site.monitors && site.monitors.map(monitor => (
+                      <span key={monitor.id} style={{
+                        fontSize: '11px', padding: '2px 6px', borderRadius: '4px',
+                        backgroundColor: monitor.status === 'Up' ? '#dcfce7' : '#fee2e2',
+                        color: monitor.status === 'Up' ? '#166534' : '#991b1b',
+                        border: `1px solid ${monitor.status === 'Up' ? '#bbf7d0' : '#fecaca'}`
+                      }}>
+                        {monitor.type.toUpperCase()}: {monitor.status}
+                        {monitor.response_time ? ` (${monitor.response_time}ms)` : ''}
+                      </span>
+                    ))}
                   </div>
                 </div>
               ))
