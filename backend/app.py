@@ -328,7 +328,7 @@ def get_websites():
         elif down_count == total_tasks:
             overall_status = "Down" # 全部挂了才是真挂了
         elif down_count > 0 or warning_count > 0:
-            overall_status = "Degraded" # 只要有部分任务 Down (如禁 Ping) 或者有任务高延迟，统统算 Warning
+            overall_status = "Warning" # 只要有部分任务 Down (如禁 Ping) 或者有任务高延迟，统统算 Warning
         else:
             overall_status = "Up" # 全绿
 

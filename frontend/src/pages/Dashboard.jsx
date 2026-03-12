@@ -178,7 +178,7 @@ const Dashboard = () => {
               websites.map((site) => (
                 <div key={site.id} style={{
                   padding: '12px', border: '1px solid #eee', borderRadius: '8px', marginBottom: '10px',
-                  borderLeft: `4px solid ${site.status === 'Down' ? '#EF4444' : site.status === 'Warning' || site.status === 'Degraded' ? '#F59E0B' : '#10B981'}`
+                  borderLeft: `4px solid ${site.status === 'Down' ? '#EF4444' : site.status === 'Warning' ? '#F59E0B' : '#10B981'}`
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
@@ -186,8 +186,8 @@ const Dashboard = () => {
                       <div style={{ fontSize: '12px', color: '#999' }}>{site.url}</div>
                     </div>
                     <span style={{ 
-                      backgroundColor: site.status === 'Down' ? '#FEE2E2' : site.status === 'Warning' || site.status === 'Degraded' ? '#FFFBEB' : '#ECFDF5', 
-                      color: site.status === 'Down' ? '#B91C1C' : site.status === 'Warning' || site.status === 'Degraded' ? '#B45309' : '#047857',
+                      backgroundColor: site.status === 'Down' ? '#FEE2E2' : site.status === 'Warning' ? '#FFFBEB' : '#ECFDF5', 
+                      color: site.status === 'Down' ? '#B91C1C' : site.status === 'Warning' ? '#B45309' : '#047857',
                       padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'
                     }}>
                       {(site.status || 'Unknown').toUpperCase()}
