@@ -555,106 +555,152 @@ def generate_ai_report():
         
         print(f"[AI Report] Retrieving database records... Scope: {time_range}, Target: {target_site}")
         
-        # 1. 从数据库提取真实的监控日志 (此处提取最近 200 条作为样本)
-        logs = MonitoringLog.query.order_by(MonitoringLog.timestamp.desc()).limit(200).all()
+        # 1. 根據前端傳來的時間範圍計算閾值
+        now = datetime.now()
+        if time_range == '24h':
+            time_threshold = now - timedelta(hours=24)
+        elif time_range == '30d':
+            time_threshold = now - timedelta(days=30)
+        else: # 預設 7d
+            time_threshold = now - timedelta(days=7)
+
+        # 2. 構建聯表查詢
+        query = db.session.query(MonitoringLog, MonitorTask, Website)\
+            .join(MonitorTask, MonitoringLog.monitor_task_id == MonitorTask.id)\
+            .join(Website, MonitorTask.website_id == Website.id)\
+            .filter(MonitoringLog.timestamp >= time_threshold)
+
+        if target_site != 'all':
+            query = query.filter(Website.id == int(target_site))
+            
+        logs = query.order_by(MonitoringLog.timestamp.desc()).limit(1000).all()
         
         if not logs:
-            return jsonify({"status": "error", "message": "There is no monitoring data in the database yet. Please wait for the system to run for a while before generating a report."}), 400
+            return jsonify({"status": "error", "message": "No monitoring data found for the selected time range and website."}), 400
             
-        # 2. 在后端进行基础的数据清洗与聚合
-        total_requests = len(logs)
-        errors = {'500': 0, '502': 0, '404': 0, 'Timeout': 0}
-        latencies = []
+        # 3. 數據清洗與聚合
+        site_stats = {}
+        errors_summary = {'HTTP_Errors': 0, 'PING_Errors': 0, 'Timeouts': 0}
         
-        for log in logs:
-            if log.status_code == 500: errors['500'] += 1
-            elif log.status_code == 502: errors['502'] += 1
-            elif log.status_code == 404: errors['404'] += 1
-            elif log.status == 'Down' or log.response_time > 1000: errors['Timeout'] += 1
-            
-            latencies.append(log.response_time)
-            
-        avg_latency = sum(latencies) / total_requests if total_requests > 0 else 0
-        error_count = sum(errors.values())
-        uptime_percent = ((total_requests - error_count) / total_requests) * 100 if total_requests > 0 else 100
+        # 👇 核心修改：分開存儲 HTTP 和 PING 的圖表數據
+        http_latencies = []
+        ping_latencies = []
         
-        # 构建要喂给 AI 的统计字典
-        db_stats = {
-            "Total Detection Count": total_requests,
-            "Average Response Time (ms)": round(avg_latency, 2),
-            "Overall Availability": f"{uptime_percent:.2f}%",
-            "Incident Counts by Type": errors
-        }
+        for log, task, site in logs:
+            site_name = site.name
+            m_type = task.monitor_type.upper() 
+            
+            if site_name not in site_stats:
+                site_stats[site_name] = {
+                    "HTTP": {"total_checks": 0, "fails": 0, "error_reasons": set(), "latencies": [], "status_codes": set()},
+                    "PING": {"total_checks": 0, "fails": 0, "error_reasons": set(), "latencies": []}
+                }
+                
+            stats = site_stats[site_name][m_type]
+            stats["total_checks"] += 1
+            stats["latencies"].append(log.response_time)
+            
+            # 👇 讓 AI 知道具體的 HTTP Status Code (比如 404, 500)
+            if m_type == 'HTTP' and log.status_code:
+                stats["status_codes"].add(log.status_code)
+            
+            is_error = log.status == 'Down' or (log.status_code and log.status_code >= 400) or log.error_details
+            
+            if is_error:
+                stats["fails"] += 1
+                if log.error_details:
+                    stats["error_reasons"].add(log.error_details)
+                elif log.status_code:
+                    stats["error_reasons"].add(f"HTTP Error {log.status_code}")
+                else:
+                    stats["error_reasons"].add("Unknown Error")
+                    
+                if m_type == 'HTTP': errors_summary['HTTP_Errors'] += 1
+                if m_type == 'PING': errors_summary['PING_Errors'] += 1
+                if 'timeout' in str(log.error_details).lower() or log.response_time == 0:
+                    errors_summary['Timeouts'] += 1
+                    
+            # 👇 分開收集圖表數據
+            chart_point = {
+                "name": log.timestamp.strftime("%H:%M"),
+                "ms": round(log.response_time, 2)
+            }
+            if m_type == 'HTTP':
+                http_latencies.append(chart_point)
+            elif m_type == 'PING':
+                ping_latencies.append(chart_point)
 
-        # 3. 构建严密的 Prompt (提示词)
+        # 計算平均延遲並將 Set 轉換為 List
+        for site, types in site_stats.items():
+            for t, s in types.items():
+                s["avg_latency_ms"] = round(sum(s["latencies"]) / s["total_checks"], 2) if s["total_checks"] > 0 else 0
+                del s["latencies"] 
+                s["error_reasons"] = list(s["error_reasons"])
+                if "status_codes" in s:
+                    s["status_codes"] = list(s["status_codes"])
+                
+        # 👇 4. 嚴密的白話文 Prompt (去除 HealthScore，禁止星號，禁深奧詞彙)
         prompt = f"""
-        You are a senior AIOps and cybersecurity architect with 10 years of experience.
-        Please generate a professional system diagnostic report based on the following latest website monitoring data.
+        You are a helpful system monitoring assistant.
+        Analyze the following website monitoring data, which separates HTTP and PING checks.
         
         Monitoring Data:
-        {json.dumps(db_stats, ensure_ascii=False)}
+        {json.dumps(site_stats, ensure_ascii=False)}
 
-        【Important Mandatory Requirements】
-        You must return only valid JSON data, and absolutely do not include any markdown code block markers (such as ```json`). Output the raw JSON string starting with curly braces.
-        JSON It must strictly conform to the following structure:
+        【Rules】
+        1. Write in simple, natural, and easy-to-understand English. Do not use complex technical jargon.
+        2. NEVER use technical examples like "(e.g., Apache, Nginx)". Just say "web server" or "website program".
+        3. NEVER use asterisks (*) or any markdown formatting. Use plain text.
+        4. Analyze the specific HTTP status codes and response times to give accurate insights.
+        
+        You must return ONLY valid JSON data. No markdown formatting.
         {{
-            "summary": "Execution Summary (3-4 sentences for overall evaluation, please combine availability and response time data)",
-            "healthScore": "Health Score, can only be selected from A, B, C, D (if no errors then A, many errors then C or D)",
-            "incidentAnalysis": "Incident and Root Cause Analysis Detailed Paragraph (if no errors, praise the system's extreme stability; if there are errors, speculate on causes like server overload, network fluctuations, etc.)",
-            "insights": ["Performance or Security Insight 1", "Performance or Security Insight 2"],
-            "recommendations": ["Specific maintenance recommendations 1", "Specific maintenance recommendations 2", "Specific maintenance recommendations 3"]
+            "summary": "A simple 2-3 sentence overview of how the websites are doing right now.",
+            "incidentAnalysis": "A simple explanation of any problems found. If HTTP failed but PING worked, explain that the server is online but the website is not loading. Mention specific status codes if there are errors.",
+            "insights": ["Simple insight 1 about response time or codes", "Simple insight 2"],
+            "recommendations": ["Simple step 1 to fix the issue", "Simple step 2"]
         }}
         """
 
-        print("[AI Report] Calling Gemini 2.5 Flash large model to analyze data....")
+        print("[AI Report] Calling Gemini 2.5 Flash to diagnose system issues....")
         
-        # 4. 调用新版 Gemini API
         response = ai_client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
         )
         
-        response_text = response.text.strip()
-        print("\n========== Gemini AI Raw returned data ==========")
-        print(response_text)
-        print("==========================================\n")
+        # 👇 強制過濾大模型可能偷偷生成的 Markdown 星號
+        response_text = response.text.strip().replace('*', '')
         
-        # 去除大模型有时会附带的 Markdown 标记
         if response_text.startswith('```json'):
             response_text = response_text[7:]
         if response_text.endswith('```'):
             response_text = response_text[:-3]
 
-        # 解析 AI 返回的 JSON 字符串
         ai_data = json.loads(response_text.strip())
 
-        # 5. 组装图表所需的前端数据格式
-        # 错误分布饼图数据
-        error_chart = [{"name": k, "value": v} for k, v in errors.items() if v > 0]
+        error_chart = [{"name": k.replace('_', ' '), "value": v} for k, v in errors_summary.items() if v > 0]
         if not error_chart:
-            error_chart = [{"name": "正常请求", "value": total_requests}] # 如果全是好的，就画个全蓝的饼图
+            error_chart = [{"name": "Normal Requests", "value": len(logs)}]
             
-        # 延迟趋势柱状图数据 (取最近 7 个点)
-        recent_logs = logs[:7]
-        recent_logs.reverse() # 时间正序
-        latency_chart = [{"name": log.timestamp.strftime("%H:%M"), "ms": round(log.response_time, 2)} for log in recent_logs]
+        http_latencies.reverse()
+        ping_latencies.reverse()
 
-        # 6. 将 AI 文字报告与图表数据合并返回
+        # 👇 5. 將分開的圖表數據傳給前端
         final_report = {
             "summary": ai_data.get("summary", ""),
-            "healthScore": ai_data.get("healthScore", "A"),
             "incidentAnalysis": ai_data.get("incidentAnalysis", ""),
             "insights": ai_data.get("insights", []),
             "recommendations": ai_data.get("recommendations", []),
             "errorChartData": error_chart,
-            "latencyChartData": latency_chart
+            "httpLatencyChartData": http_latencies[-10:], # 取最近10個點
+            "pingLatencyChartData": ping_latencies[-10:]  # 取最近10個點
         }
 
-        print("[AI Report] 报告生成完毕，已下发给前端！")
         return jsonify({"status": "success", "data": final_report}), 200
 
     except Exception as e:
-        print(f"[AI Report] 发生错误: {e}")
+        print(f"[AI Report Error] {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/support-chat', methods=['POST'])

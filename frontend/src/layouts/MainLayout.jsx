@@ -169,7 +169,7 @@ const MainLayout = () => {
         <nav style={{ flex: 1, padding: '0 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <NavItem to="/dashboard" icon={LayoutGrid} label="Dashboard" />
           <NavItem to="/status" icon={Globe} label="Website Status" />
-          <NavItem to="/reports" icon={FileText} label="NLP Reports" />
+          <NavItem to="/reports" icon={FileText} label="Reports" />
           <NavItem to="/alerts" icon={Bell} label="Alerts" />
           
           {/* RBAC: 只有 Admin 和 Technical 可以看到 Add Website */}
