@@ -952,6 +952,48 @@ def get_alert_history():
         })
     return jsonify(output)
 
+# 👇 新增：获取仪表盘全局响应时间趋势图数据
+@app.route('/api/dashboard/chart', methods=['GET'])
+def get_dashboard_chart():
+    # 联表获取最新的 200 条记录
+    logs = db.session.query(MonitoringLog, MonitorTask)\
+        .join(MonitorTask, MonitoringLog.monitor_task_id == MonitorTask.id)\
+        .order_by(MonitoringLog.timestamp.desc()).limit(200).all()
+        
+    trend_data = {}
+    for log, task in logs:
+        # 排除掉超时 (0ms) 的数据，避免拉低平均值导致图表失真
+        if not log.response_time or log.response_time <= 0: 
+            continue
+            
+        # 按 "HH:MM" 分钟级聚合
+        time_str = log.timestamp.strftime("%H:%M")
+        m_type = task.monitor_type.lower()
+        
+        if time_str not in trend_data:
+            trend_data[time_str] = {"http": [], "ping": []}
+            
+        trend_data[time_str][m_type].append(log.response_time)
+        
+    output = []
+    for time_str, data in trend_data.items():
+        http_avg = round(sum(data["http"]) / len(data["http"]), 2) if data["http"] else 0
+        ping_avg = round(sum(data["ping"]) / len(data["ping"]), 2) if data["ping"] else 0
+        
+        # 只要有任何一项数据就加入图表
+        if http_avg > 0 or ping_avg > 0:
+            output.append({
+                "time": time_str,
+                "http_ms": http_avg,
+                "ping_ms": ping_avg
+            })
+            
+    # 按时间正序排列 (从左到右)
+    output.sort(key=lambda x: x['time'])
+    
+    # 只取最近的 15 个点以保证图表美观不拥挤
+    return jsonify(output[-15:])
+
 # 👇 自动初始化数据库的函数
 def auto_setup_database():
     with app.app_context():
