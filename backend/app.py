@@ -195,10 +195,10 @@ def execute_single_task(task_data):
     }  
 
 # 全站扫描函数，供定时器调用
-def scan_all_websites():
+def scan_all_websites(force=False):
     """使用多執行緒併發執行所有監控任務，跑完後【統一合併寫入】資料庫"""
     with app.app_context():
-        print(f"\n[Scheduler] Starting scan at {datetime.now().strftime('%H:%M:%S')}...")
+        print(f"\n[Scheduler] Starting scan at {datetime.now().strftime('%H:%M:%S')}(Force: {force})...")
         tasks = MonitorTask.query.all()
         
         if not tasks:
@@ -208,7 +208,7 @@ def scan_all_websites():
         task_to_run = []
         now = datetime.now()
         for task in tasks:
-            if not task.last_checked or now >= task.last_checked + timedelta(minutes=task.interval):
+            if force or not task.last_checked or now >= task.last_checked + timedelta(minutes=task.interval):
                 task_to_run.append(task)
                 
         if not task_to_run:
@@ -370,10 +370,10 @@ def get_websites():
         })
     return jsonify(output)
 
-# 新增：手动触发扫描接口
+# Scan Now Button 手动触发扫描接口
 @app.route('/api/scan', methods=['POST'])
 def manual_scan():
-    scan_all_websites()
+    scan_all_websites(force=True)
     return jsonify({"message": "Scan completed successfully!"})
 
 # --- 1. 添加新网站 API (更新：支持存储全部字段) ---
