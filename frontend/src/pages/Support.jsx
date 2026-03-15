@@ -10,15 +10,6 @@ const RATING_DATA = [
   { title: "Critical Issue", range: "> 1000ms", desc: "Severely impacts user experience, needs immediate action.", color: "#e74c3c", bgColor: "#fdedec" }
 ];
 
-// 优化建议数据
-const IMPROVEMENT_TIPS = [
-  "Use a CDN (Content Delivery Network) to accelerate static resource loading",
-  "Optimize database queries and add appropriate indexes",
-  "Enable server caching mechanisms",
-  "Compress images and file sizes",
-  "Upgrade server hardware or choose a better hosting service"
-];
-
 // 常见 HTTP 状态码
 const COMMON_STATUS_CODES = [
   { code: "200", name: "OK", desc: "Request successful. The website is running normally and data has been returned.", color: "#2ecc71", bg: "#eafaf1" },
@@ -149,16 +140,6 @@ function Support() {
               <p style={{ fontSize: '0.9rem', color: '#576574', margin: '0', lineHeight: '1.4' }}>{item.desc}</p>
             </div>
           ))}
-        </div>
-
-        {/* 优化建议 */}
-        <div style={{ background: '#f8f9fa', borderRadius: '12px', padding: '20px', border: '1px solid #e9ecef' }}>
-          <h3 style={{ fontSize: '1.2rem', color: '#34495e', marginTop: '0', marginBottom: '15px' }}>💡 How to Improve Response Time?</h3>
-          <ul style={{ margin: 0, paddingLeft: '20px', color: '#576574', lineHeight: '1.8' }}>
-            {IMPROVEMENT_TIPS.map((tip, idx) => (
-              <li key={idx} style={{ marginBottom: '8px' }}>{tip}</li>
-            ))}
-          </ul>
         </div>
       </div>
 

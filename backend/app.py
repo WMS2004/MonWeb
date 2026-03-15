@@ -419,16 +419,29 @@ def update_website(id):
     
     # 更新监控任务：最简单的做法是先删除旧任务，再根据前端传来的重新创建
     if 'monitors' in data:
-        MonitorTask.query.filter_by(website_id=site.id).delete()
+        # 提取前端传来的监控类型 (比如 ['http', 'ping'])
+        frontend_types = [m['type'] for m in data['monitors']]
+        
+        # 1. 更新已存在的任务，或创建新增的任务
         for m in data['monitors']:
-            new_task = MonitorTask(
-                website_id=site.id,
-                monitor_type=m['type'],
-                interval=int(m.get('interval', 5)),
-                timeout=int(m.get('timeout', 10))
-            )
-            db.session.add(new_task)
-            
+            existing_task = MonitorTask.query.filter_by(website_id=site.id, monitor_type=m['type']).first()
+            if existing_task:
+                # 只更新参数，保留原有 ID，这样历史日志就不会丢失！
+                existing_task.interval = int(m.get('interval', 5))
+                existing_task.timeout = int(m.get('timeout', 10))
+            else:
+                new_task = MonitorTask(
+                    website_id=site.id,
+                    monitor_type=m['type'],
+                    interval=int(m.get('interval', 5)),
+                    timeout=int(m.get('timeout', 10))
+                )
+                db.session.add(new_task)
+                
+        # 2. 如果用户在前端取消勾选了某种监控，则删除该任务
+        for old_task in site.monitor_tasks:
+            if old_task.monitor_type not in frontend_types:
+                db.session.delete(old_task)
     try:
         db.session.commit()
         return jsonify({"message": "Website updated successfully!"}), 200
