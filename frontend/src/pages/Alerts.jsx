@@ -303,11 +303,10 @@
 // export default Alerts;
 
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Volume2, Globe, ShieldAlert, History, AlertTriangle } from 'lucide-react'; 
+import React, { useState, useEffect } from 'react';
+import { Bell, Globe, ShieldAlert, History } from 'lucide-react'; 
 
 const Alerts = () => {
-  // --- 鉴权 ---
   const currentUser = JSON.parse(localStorage.getItem('monweb_user') || '{}');
   const isUserRole = currentUser.role === 'User'; 
 
@@ -319,20 +318,10 @@ const Alerts = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 使用 Ref 追踪最新一条警报的 ID，避免重复弹窗
-  const lastAlertIdRef = useRef(null);
-  // 使用 Ref 保存最新的 settings，确保在 setInterval 的闭包中能读取到最新设置
-  const settingsRef = useRef(settings);
-
-  useEffect(() => {
-    settingsRef.current = settings;
-  }, [settings]);
-
-  // --- 初始化加载数据 & 设置自动更新 ---
   useEffect(() => {
     if (!currentUser.id) return;
     
-    // 1. 获取全局设置
+    // 1. 获取设置
     fetch(`http://localhost:5000/api/alerts/settings/${currentUser.id}`)
       .then(res => res.json())
       .then(data => setSettings({ browserNotify: data.browserNotify, soundEnabled: data.soundEnabled }))
@@ -346,83 +335,22 @@ const Alerts = () => {
         setIsLoading(false);
       });
 
-    // 3. 获取警报历史记录的函数 (包含批处理合并防打扰逻辑)
+    // 3. 仅获取警报历史数据用于展示 (弹窗逻辑已被移至 MainLayout 全局)
     const fetchHistory = () => {
       fetch('http://localhost:5000/api/alerts/history')
         .then(res => res.json())
-        .then(data => {
-          setAlertHistory(data);
-          
-          if (data.length > 0) {
-            const currentLatestId = data[0].id;
-            
-            // 如果是页面第一次加载，只记录最新的 ID，不触发弹窗
-            if (lastAlertIdRef.current === null) {
-              lastAlertIdRef.current = currentLatestId;
-              return;
-            }
-
-            // 🔴 核心功能：如果有新日志产生 (ID 大于我们记录的最新 ID)
-            if (currentLatestId > lastAlertIdRef.current) {
-              
-              // 1. 抓出所有新的日志 (解决被吞噬的问题)
-              const newLogs = data.filter(log => log.id > lastAlertIdRef.current);
-              
-              // 2. 过滤掉被静音的网站的日志
-              const alertableLogs = newLogs.filter(log => !log.is_muted);
-
-              // 3. 如果过滤后还有需要警报的日志
-              if (alertableLogs.length > 0) {
-                
-                // 【声音合并】：无论坏了多少个网站，只响一次声音！
-                if (settingsRef.current.soundEnabled) {
-                  new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play().catch(e => console.error("Audio block:", e));
-                }
-
-                // 【弹窗合并防污染】
-                if (settingsRef.current.browserNotify && Notification.permission === 'granted') {
-                  
-                  if (alertableLogs.length === 1) {
-                    // 情况 A：只有一个网站坏了，显示详细报错
-                    const newAlert = alertableLogs[0];
-                    new Notification(`🚨 MonWeb Alert: ${newAlert.website_name}`, {
-                      body: `[${newAlert.monitor_type}] ${newAlert.status}\nError: ${newAlert.error_details || 'Unknown Issue'}`,
-                      icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png'
-                    });
-                  } else {
-                    // 情况 B：多个网站同时坏了，合并成一条弹窗 (去重提取网站名)
-                    const uniqueSiteNames = [...new Set(alertableLogs.map(log => log.website_name))].join(', ');
-                    new Notification(`🚨 MonWeb Alert: ${alertableLogs.length} issues detected!`, {
-                      body: `Affected websites: ${uniqueSiteNames}\nPlease check the dashboard for details.`,
-                      icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png'
-                    });
-                  }
-                }
-              }
-
-              // 无论有没有触发弹窗，都要把追踪 ID 更新到最高，防止下次重复判定
-              lastAlertIdRef.current = currentLatestId;
-            }
-          }
-        })
+        .then(data => setAlertHistory(data))
         .catch(err => console.error("无法获取警报历史: ", err));
     };
 
-    // 初次加载时获取一次历史
     fetchHistory();
-
-    // 设定定时器：每 10 秒自动更新一次并检查是否有新警报
     const intervalId = setInterval(fetchHistory, 10000);
-
     return () => clearInterval(intervalId);
   }, [currentUser.id]);
 
-  // --- 交互逻辑 ---
   const handleChange = (key, value) => {
     if (isUserRole) return;
     setSettings(prev => ({ ...prev, [key]: value }));
-    
-    // 如果用户开启了浏览器通知，主动请求系统权限
     if (key === 'browserNotify' && value && Notification.permission !== 'granted') {
       Notification.requestPermission();
     }
@@ -443,14 +371,13 @@ const Alerts = () => {
   const handleSave = () => {
     if (isUserRole) return;
     setIsSaving(true);
-    // 保存时附带后端的默认旧字段避免覆盖报错
     const payload = { ...settings, failCount: 2, smartMute: true };
     fetch(`http://localhost:5000/api/alerts/settings/${currentUser.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).then(res => {
-      if (res.ok) alert("✅ Alert configurations saved successfully!");
+      if (res.ok) alert("✅ Alert configurations saved successfully! Changes apply globally.");
     }).finally(() => setIsSaving(false));
   };
 
@@ -460,7 +387,7 @@ const Alerts = () => {
     }
     if (settings.browserNotify && Notification.permission === 'granted') {
       new Notification('🚨 MonWeb 弹窗测试', {
-        body: '这是一条测试警报。如果您能看到此弹窗并听到声音，说明配置正确！真实系统崩溃时也会以此方式提醒您。',
+        body: '这是一条测试警报。如果您能看到此弹窗并听到声音，说明全局系统配置正确！',
         icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png'
       });
     } else if (settings.browserNotify) {
@@ -472,7 +399,6 @@ const Alerts = () => {
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      
       <div style={{ marginBottom: '30px' }}>
         <h1 style={{ margin: '0 0 8px 0', fontSize: '24px', color: '#0f172a' }}>Alarm Notification Settings</h1>
         <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Personalize your monitoring alert configurations and view live history.</p>
@@ -487,62 +413,39 @@ const Alerts = () => {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        {/* 卡片 1：通知渠道与声音 (合并简化版) */}
+        {/* 卡片 1 */}
         <div style={cardStyle}>
           <div style={cardHeaderStyle}><Bell size={20} color="#475569" /> Notification & Sound Settings</div>
-          
           <div style={{ ...itemBoxStyle, borderLeft: '4px solid #2563eb', marginBottom: '16px' }}>
             <div>
               <div style={{ fontWeight: 'bold', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>Browser Popup Notifications</div>
-              <div style={{ fontSize: '13px', color: '#64748b' }}>Receive system-level popups when a website goes down, even if the browser is minimized.</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>Receive system-level popups across ALL pages when a website goes down.</div>
             </div>
-            <input 
-              type="checkbox" disabled={isUserRole} checked={settings.browserNotify} 
-              onChange={(e) => handleChange('browserNotify', e.target.checked)} 
-              style={checkboxStyle}
-            />
+            <input type="checkbox" disabled={isUserRole} checked={settings.browserNotify} onChange={(e) => handleChange('browserNotify', e.target.checked)} style={checkboxStyle}/>
           </div>
-
           <div style={{ ...itemBoxStyle, borderLeft: '4px solid #8b5cf6' }}>
             <div>
               <div style={{ fontWeight: 'bold', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>Notification Sound</div>
-              <div style={{ fontSize: '13px', color: '#64748b' }}>Play an audible warning beep when an alert is triggered.</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>Play an audible warning beep when an alert is triggered globally.</div>
             </div>
-            <input 
-              type="checkbox" disabled={isUserRole} checked={settings.soundEnabled} 
-              onChange={(e) => handleChange('soundEnabled', e.target.checked)} 
-              style={checkboxStyle} 
-            />
+            <input type="checkbox" disabled={isUserRole} checked={settings.soundEnabled} onChange={(e) => handleChange('soundEnabled', e.target.checked)} style={checkboxStyle} />
           </div>
         </div>
 
-        {/* 卡片 2：独立单站静音 */}
+        {/* 卡片 2 */}
         <div style={cardStyle}>
           <div style={cardHeaderStyle}><Globe size={20} color="#0ea5e9" /> Independent Target Website Silent (Mute)</div>
-          <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px' }}>
-            Known error websites can be individually blocked, and muted websites will not trigger sound or popups.
-          </p>
           <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
             {isLoading ? (
               <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>Loading...</div>
             ) : websites.map((site, index) => (
-              <div key={site.id} style={{ 
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                padding: '16px', backgroundColor: site.is_muted ? '#f8fafc' : 'white',
-                borderBottom: index !== websites.length - 1 ? '1px solid #e2e8f0' : 'none'
-              }}>
+              <div key={site.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: site.is_muted ? '#f8fafc' : 'white', borderBottom: index !== websites.length - 1 ? '1px solid #e2e8f0' : 'none'}}>
                 <div style={{ fontWeight: 'bold', color: site.is_muted ? '#94a3b8' : '#1e293b', fontSize: '14px' }}>
                   {site.name} {site.is_muted && <span style={{ fontSize: '11px', backgroundColor: '#e2e8f0', color: '#475569', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>Muted</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <span style={{ fontSize: '13px', color: site.is_muted ? '#ef4444' : '#10b981', fontWeight: '600' }}>
-                    {site.is_muted ? 'Alert Disabled' : 'Alert Enabled'}
-                  </span>
-                  <input 
-                    type="checkbox" disabled={isUserRole} checked={!site.is_muted} 
-                    onChange={() => handleMuteToggle(site.id, site.is_muted)} 
-                    style={checkboxStyle}
-                  />
+                  <span style={{ fontSize: '13px', color: site.is_muted ? '#ef4444' : '#10b981', fontWeight: '600' }}>{site.is_muted ? 'Alert Disabled' : 'Alert Enabled'}</span>
+                  <input type="checkbox" disabled={isUserRole} checked={!site.is_muted} onChange={() => handleMuteToggle(site.id, site.is_muted)} style={checkboxStyle}/>
                 </div>
               </div>
             ))}
@@ -561,12 +464,9 @@ const Alerts = () => {
           )}
         </div>
 
-        {/* --- 智能更新的警报历史卡片 --- */}
+        {/* 历史卡片 */}
         <div style={cardStyle}>
-          <div style={cardHeaderStyle}>
-            <History size={20} color="#f59e0b" /> Real-Time Alert History (Top 30)
-          </div>
-          
+          <div style={cardHeaderStyle}><History size={20} color="#f59e0b" /> Real-Time Alert History (Top 30)</div>
           <div style={{ maxHeight: '400px', overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
               <thead style={{position: 'sticky', top: 0, zIndex: 10}}>
@@ -574,61 +474,35 @@ const Alerts = () => {
                   <th style={{ padding: '12px 16px', fontWeight: '600' }}>Time</th>
                   <th style={{ padding: '12px 16px', fontWeight: '600' }}>Website</th>
                   <th style={{ padding: '12px 16px', fontWeight: '600' }}>Type</th>
-                  {/* 👇 动态 Metric 栏位 */}
                   <th style={{ padding: '12px 16px', fontWeight: '600' }}>Status / Metric</th>
                   <th style={{ padding: '12px 16px', fontWeight: '600' }}>Alert Details</th>
                 </tr>
               </thead>
               <tbody>
                 {alertHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
-                      Great! There are currently no system alert records.
-                    </td>
-                  </tr>
+                  <tr><td colSpan="5" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>Great! There are currently no system alert records.</td></tr>
                 ) : (
                   alertHistory.map((record, index) => (
                     <tr key={index} style={{ borderBottom: index !== alertHistory.length - 1 ? '1px solid #f1f5f9' : 'none', backgroundColor: 'white', transition: 'background 0.2s' }}>
-                      
-                      {/* 时间 */}
                       <td style={{ padding: '12px 16px', color: '#64748b', whiteSpace: 'nowrap' }}>
-                        {record.time.split(' ')[1]} {/* 只显示时分秒更清晰 */}
+                        {record.time.split(' ')[1]}
                         <div style={{ fontSize: '11px', color: '#cbd5e1' }}>{record.time.split(' ')[0]}</div>
                       </td>
-
-                      {/* 目标网站 */}
                       <td style={{ padding: '12px 16px', fontWeight: '600', color: '#1e293b' }}>
                         {record.website_name}
                         <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'normal', marginTop: '2px' }}>{record.url}</div>
                       </td>
-
-                      {/* 监控类型 (HTTP 或 PING) */}
-                      <td style={{ padding: '12px 16px', fontWeight: 'bold', color: '#475569' }}>
-                        {record.monitor_type}
-                      </td>
-
-                      {/* 👇 严格按照你的要求：只显示数字和 ms，不显示 Timeout / ERR */}
+                      <td style={{ padding: '12px 16px', fontWeight: 'bold', color: '#475569' }}>{record.monitor_type}</td>
                       <td style={{ padding: '12px 16px', fontWeight: 'bold' }}>
                         {record.monitor_type === 'PING' ? (
-                          <span style={{ color: record.response_time === 0 ? '#ef4444' : '#d97706' }}>
-                            {record.response_time} ms
-                          </span>
+                          <span style={{ color: record.response_time === 0 ? '#ef4444' : '#d97706' }}>{record.response_time} ms</span>
                         ) : (
-                          <span style={{ color: !record.status_code || record.status_code >= 400 ? '#ef4444' : '#10b981' }}>
-                            HTTP {record.status_code || 0}
-                          </span>
+                          <span style={{ color: !record.status_code || record.status_code >= 400 ? '#ef4444' : '#10b981' }}>HTTP {record.status_code || 0}</span>
                         )}
                       </td>
-
-                      {/* 警报级别与详情 */}
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ 
-                            color: record.status === 'Down' ? '#ef4444' : '#d97706', 
-                            backgroundColor: record.status === 'Down' ? '#fef2f2' : '#fef3c7', 
-                            border: `1px solid ${record.status === 'Down' ? '#fca5a5' : '#fde68a'}`,
-                            padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' 
-                          }}>
+                          <span style={{ color: record.status === 'Down' ? '#ef4444' : '#d97706', backgroundColor: record.status === 'Down' ? '#fef2f2' : '#fef3c7', border: `1px solid ${record.status === 'Down' ? '#fca5a5' : '#fde68a'}`, padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
                             {record.status.toUpperCase()}
                           </span>
                           <span style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }} title={record.error_details}>
@@ -636,7 +510,6 @@ const Alerts = () => {
                           </span>
                         </div>
                       </td>
-
                     </tr>
                   ))
                 )}
@@ -644,13 +517,11 @@ const Alerts = () => {
             </table>
           </div>
         </div>
-
       </div>
     </div>
   );
 };
 
-// --- 样式定义 ---
 const cardStyle = { backgroundColor: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
 const cardHeaderStyle = { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '16px', fontWeight: 'bold', color: '#0f172a', marginBottom: '20px' };
 const itemBoxStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' };
