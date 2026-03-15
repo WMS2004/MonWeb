@@ -219,7 +219,6 @@ const MonitorConfigCard = ({ type, config, onChange }) => {
   return (
     <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginTop: '12px', display: 'flex', gap: '20px', animation: 'fadeIn 0.3s ease-in-out' }}>
       <InputGroup label={`${isHttp ? 'HTTP' : 'PING'} Dedicated detection frequency`}>
-        {/* 👇 修改点：增加了更丰富的时间间隔选项 👇 */}
         <select value={config.interval} onChange={(e) => onChange(type, 'interval', parseInt(e.target.value))} style={inputStyle}>
           <option value="1">Every 1 minute</option>
           <option value="2">Every 2 minutes</option>
@@ -273,9 +272,14 @@ const WebsiteForm = () => {
         .then(res => res.json())
         .then(data => {
           if (data && data.website) {
+            // 👇 优化：在编辑模式下，自动把后台的 https:// 前缀去掉，让界面更清爽
+            let cleanUrl = data.website.url || '';
+            if (cleanUrl.startsWith('https://')) cleanUrl = cleanUrl.replace('https://', '');
+            else if (cleanUrl.startsWith('http://')) cleanUrl = cleanUrl.replace('http://', '');
+
             setFormData({
               name: data.website.name || '',
-              url: data.website.url || '',
+              url: cleanUrl,
             });
             if (data.website.monitors && data.website.monitors.length > 0) {
               setMonitors(data.website.monitors);
@@ -403,7 +407,8 @@ const WebsiteForm = () => {
               <input required name="name" value={formData.name} onChange={handleBasicChange} placeholder="For example: Production API" style={inputStyle} />
             </InputGroup>
             <InputGroup label="Website URL *">
-              <input required type="url" name="url" value={formData.url} onChange={handleBasicChange} placeholder="www.example.com" style={inputStyle} />
+              {/* 👇 关键修复：把 type="url" 换成了 type="text"，彻底解放用户的输入自由 👇 */}
+              <input required type="text" name="url" value={formData.url} onChange={handleBasicChange} placeholder="apu.edu.my" style={inputStyle} />
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>System will automatically prepend https:// if missing</span>
             </InputGroup>
           </div>
