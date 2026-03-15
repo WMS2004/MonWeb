@@ -280,43 +280,43 @@ def home():
 def test_connection():
     return jsonify({"status": "success", "message": "Backend Connected"})
 
-@app.route('/api/init-db', methods=['POST'])
-def init_db():
-    with app.app_context():
-        db.create_all()
+# @app.route('/api/init-db', methods=['POST'])
+# def init_db():
+#     with app.app_context():
+#         db.create_all()
 
-        # 初始化 admin 用户
-        admin_user = User.query.filter_by(username='admin').first()
-        if not admin_user:
-            admin_user = User(username='admin', email='admin@monweb.com', password='1234', role='Admin')
-            db.session.add(admin_user)
+#         # 初始化 admin 用户
+#         admin_user = User.query.filter_by(username='admin').first()
+#         if not admin_user:
+#             admin_user = User(username='admin', email='admin@monweb.com', password='1234', role='Admin')
+#             db.session.add(admin_user)
 
-        if not Website.query.first():
-            # 预设测试网站
-            sites_data = [
-                {"name": "Eye On The Ball", "url": "https://eyeontheballfilm.com/"},
-                {"name": "StarProperty Fair", "url": "https://fair.starproperty.my/"},
-                {"name": "Kirana", "url": "https://kirana.my/"},
-                {"name": "StarProperty Pullout", "url": "https://pullout.starproperty.my/"},
-                {"name": "Rage", "url": "https://www.rage.com.my/"},
-                {"name": "Kuntum", "url": "https://www.kuntum.com.my/"},
-                {"name": "Kuali Startup", "url": "https://startup.kuali.com/"},
-                {"name": "Fake Website", "url": "this-site-definitely-does-not-exist.com"}  # 测试宕机
-            ]
-            for s_data in sites_data:
-                # 先创建网站
-                site = Website(name=s_data["name"], url=s_data["url"])
-                db.session.add(site)
-                db.session.commit() # 提交后 site.id 才有值
-                # 创建独立的监控任务
-                # HTTP 任务
-                http_task = MonitorTask(website_id=site.id, monitor_type='http', interval=5, timeout=10)
-                # PING 任务
-                ping_task = MonitorTask(website_id=site.id, monitor_type='ping', interval=1, timeout=10)
-                db.session.add_all([http_task, ping_task])
-            db.session.commit()
-            return jsonify({"message": "Database initialized with test data!"})
-        return jsonify({"message": "Database already exists."})
+#         if not Website.query.first():
+#             # 预设测试网站
+#             sites_data = [
+#                 {"name": "Eye On The Ball", "url": "https://eyeontheballfilm.com/"},
+#                 {"name": "StarProperty Fair", "url": "https://fair.starproperty.my/"},
+#                 {"name": "Kirana", "url": "https://kirana.my/"},
+#                 {"name": "StarProperty Pullout", "url": "https://pullout.starproperty.my/"},
+#                 {"name": "Rage", "url": "https://www.rage.com.my/"},
+#                 {"name": "Kuntum", "url": "https://www.kuntum.com.my/"},
+#                 {"name": "Kuali Startup", "url": "https://startup.kuali.com/"},
+#                 {"name": "Fake Website", "url": "this-site-definitely-does-not-exist.com"}  # 测试宕机
+#             ]
+#             for s_data in sites_data:
+#                 # 先创建网站
+#                 site = Website(name=s_data["name"], url=s_data["url"])
+#                 db.session.add(site)
+#                 db.session.commit() # 提交后 site.id 才有值
+#                 # 创建独立的监控任务
+#                 # HTTP 任务
+#                 http_task = MonitorTask(website_id=site.id, monitor_type='http', interval=5, timeout=10)
+#                 # PING 任务
+#                 ping_task = MonitorTask(website_id=site.id, monitor_type='ping', interval=1, timeout=10)
+#                 db.session.add_all([http_task, ping_task])
+#             db.session.commit()
+#             return jsonify({"message": "Database initialized with test data!"})
+#         return jsonify({"message": "Database already exists."})
 
 @app.route('/api/websites', methods=['GET'])
 def get_websites():
@@ -441,6 +441,7 @@ def update_website(id):
         # 2. 如果用户在前端取消勾选了某种监控，则删除该任务
         for old_task in site.monitor_tasks:
             if old_task.monitor_type not in frontend_types:
+                MonitoringLog.query.filter_by(monitor_task_id=old_task.id).delete()
                 db.session.delete(old_task)
     try:
         db.session.commit()
@@ -454,8 +455,8 @@ def update_website(id):
 def delete_website(id):
     site = Website.query.get_or_404(id)
     try:
-        # 也要删除关联的日志，否则可能会留垃圾数据
-        # (因为我们在 Model 里没设级联删除，这里简单处理先只删网站，日志留着也行)
+        for task in site.monitor_tasks:
+            MonitoringLog.query.filter_by(monitor_task_id=task.id).delete()
         db.session.delete(site)
         db.session.commit()
         return jsonify({"message": "Website deleted successfully!"})
@@ -496,7 +497,7 @@ def get_website_logs(id):
     logs = db.session.query(MonitoringLog, MonitorTask)\
              .join(MonitorTask)\
              .filter(MonitorTask.website_id == id)\
-             .order_by(MonitoringLog.timestamp.desc()).limit(30).all()
+             .order_by(MonitoringLog.timestamp.desc()).limit(120).all()
     
     logs_data = []
     for log, task in reversed(logs):
@@ -951,5 +952,45 @@ def get_alert_history():
         })
     return jsonify(output)
 
+# 👇 自动初始化数据库的函数
+def auto_setup_database():
+    with app.app_context():
+        # 1. 自动建表（如果表已存在则会自动跳过）
+        db.create_all()
+        
+        # 2. 自动检查并创建 Admin 账号
+        admin_user = User.query.filter_by(username='admin').first()
+        if not admin_user:
+            admin_user = User(username='admin', email='admin@monweb.com', password='1234', role='Admin')
+            db.session.add(admin_user)
+            db.session.commit()
+            print("✅ [System] Admin account created automatically.")
+
+        # 3. 自动塞入测试数据（如果数据库是空的）
+        if not Website.query.first():
+            print("⏳ [System] Populating test websites...")
+            sites_data = [
+                {"name": "Eye On The Ball", "url": "https://eyeontheballfilm.com/"},
+                {"name": "StarProperty Fair", "url": "https://fair.starproperty.my/"},
+                {"name": "Kirana", "url": "https://kirana.my/"},
+                {"name": "StarProperty Pullout", "url": "https://pullout.starproperty.my/"},
+                {"name": "Rage", "url": "https://www.rage.com.my/"},
+                {"name": "Kuntum", "url": "https://www.kuntum.com.my/"},
+                {"name": "Kuali Startup", "url": "https://startup.kuali.com/"},
+                {"name": "Fake Website", "url": "this-site-definitely-does-not-exist.com"}
+            ]
+            for s_data in sites_data:
+                site = Website(name=s_data["name"], url=s_data["url"])
+                db.session.add(site)
+                db.session.commit() 
+                http_task = MonitorTask(website_id=site.id, monitor_type='http', interval=5, timeout=10)
+                ping_task = MonitorTask(website_id=site.id, monitor_type='ping', interval=1, timeout=10)
+                db.session.add_all([http_task, ping_task])
+            db.session.commit()
+            print("✅ [System] Data populated successfully!")
+        else:
+            print("✅ [System] Database already initialized. No action needed.")
+
 if __name__ == '__main__':
+    auto_setup_database()  # 👈 每次启动 Flask 都会先自动执行这个安全检查！
     app.run(debug=True, port=5000)

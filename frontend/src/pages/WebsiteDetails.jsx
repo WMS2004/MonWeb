@@ -303,7 +303,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
-import { ArrowLeft, Activity, TrendingUp, Clock, RefreshCw, Globe, Zap, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Activity, Clock, RefreshCw, Globe, Zap, CheckCircle, AlertTriangle } from 'lucide-react';
 
 const WebsiteDetails = () => {
   const { id } = useParams(); 
@@ -342,11 +342,9 @@ const WebsiteDetails = () => {
 
   const { website, logs } = data;
 
-  // 👇 1. 解析網站擁有的監控類型
   const hasPing = website.monitors?.some(m => m.type === 'ping') || false;
   const hasHttp = website.monitors?.some(m => m.type === 'http') || false;
 
-  // 👇 2. 自動修正預設打開的標籤頁
   useEffect(() => {
     if (website.monitors) {
       if (!hasPing && activeTab === 'ping') setActiveTab('http');
@@ -354,27 +352,20 @@ const WebsiteDetails = () => {
     }
   }, [website.monitors, hasPing, hasHttp]);
 
-  // 攔截加載狀態
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>Loading...</div>;
 
-  // 👇 3. 根據當前啟用的 Tab 過濾出對應的日誌
   const currentLogs = logs.filter(log => log.type.toLowerCase() === activeTab);
-  
-  // 獲取當前監控項的最新一筆日誌 (數組最後一個)
   const latestLog = currentLogs.length > 0 ? currentLogs[currentLogs.length - 1] : null;
   const latestResponseTime = latestLog ? latestLog.response_time : 0;
-  
-  // 獲取當前監控項的設定 (例如 Interval)
   const activeMonitorConfig = website.monitors?.find(m => m.type === activeTab) || {};
 
-  // --- 抽取復用的日誌表格組件 (加入滾動條設計) ---
+  // --- 重构后的日志表格组件 (动态列名 + 智能 Result) ---
   const LogsTable = ({ logsData, monitorType }) => {
-    // 👇 修改點：獲取最新的 30 條記錄 (將過濾好的 logsData 反轉並切片)
     const topLogs = [...logsData].reverse().slice(0, 30);
+    const isHttp = monitorType.toLowerCase() === 'http';
     
     return (
       <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        {/* 👇 修改點：標題改為 Top 30 */}
         <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', color: '#111827' }}>Monitoring Logs (Top 30)</h3>
         
         <div style={{ maxHeight: '400px', overflowY: 'auto', overflowX: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
@@ -382,8 +373,15 @@ const WebsiteDetails = () => {
             <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
               <tr style={{ color: '#64748b' }}>
                 <th style={{ padding: '12px 16px', fontWeight: '600', borderBottom: '1px solid #e2e8f0' }}>Time</th>
-                <th style={{ padding: '12px 16px', fontWeight: '600', borderBottom: '1px solid #e2e8f0' }}>Monitor Type</th>
-                <th style={{ padding: '12px 16px', fontWeight: '600', borderBottom: '1px solid #e2e8f0' }}>Status Code</th>
+                <th style={{ padding: '12px 16px', fontWeight: '600', borderBottom: '1px solid #e2e8f0' }}>Type</th>
+                
+                {/* 👇 根据当前监控类型，动态显示第三列的表头 */}
+                {isHttp ? (
+                  <th style={{ padding: '12px 16px', fontWeight: '600', borderBottom: '1px solid #e2e8f0' }}>Status Code</th>
+                ) : (
+                  <th style={{ padding: '12px 16px', fontWeight: '600', borderBottom: '1px solid #e2e8f0' }}>Response Time</th>
+                )}
+                
                 <th style={{ padding: '12px 16px', fontWeight: '600', borderBottom: '1px solid #e2e8f0' }}>Result</th>
                 <th style={{ padding: '12px 16px', fontWeight: '600', borderBottom: '1px solid #e2e8f0' }}>AI Insight</th>
               </tr>
@@ -395,28 +393,46 @@ const WebsiteDetails = () => {
                 </tr>
               ) : (
                 topLogs.map((log, index) => {
-                  const isError = log.response_time === 0 || log.status_code >= 400 || log.error;
-                  const aiInsight = isError ? (log.error || "Connection issue detected") : "Response time is normal, system is running smoothly";
+                  // 判断是否是异常记录
+                  const isError = log.response_time === 0 || (isHttp && log.status_code >= 400) || log.error;
+                  const aiInsight = isError ? (log.error || "Connection issue detected") : "Response time is normal, system is running smoothly.";
                   
                   return (
                     <tr key={index} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.2s', ':hover': { backgroundColor: '#f8fafc' } }}>
                       <td style={{ padding: '12px 16px', color: '#475569' }}>{log.time}</td>
-                      <td style={{ padding: '12px 16px', color: '#0f172a', fontWeight: '500' }}>{monitorType}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ 
-                          padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold',
-                          color: isError ? '#DC2626' : '#059669', backgroundColor: isError ? '#FEE2E2' : '#D1FAE5'
-                        }}>
-                          {/* 👇 修改點：確保數字 0 也會被渲染出來，而不是變成 ERR */}
-                          {log.status_code !== undefined && log.status_code !== null ? log.status_code : (isError ? 'ERR' : 'OK')}
-                        </span>
-                      </td>
+                      <td style={{ padding: '12px 16px', color: '#0f172a', fontWeight: '600' }}>{monitorType}</td>
+                      
+                      {/* 👇 动态第三列：如果是 HTTP 显示徽章，如果是 PING 显示时间 */}
+                      {isHttp ? (
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ 
+                            padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold',
+                            color: isError ? '#DC2626' : '#059669', backgroundColor: isError ? '#FEE2E2' : '#D1FAE5'
+                          }}>
+                            {log.status_code !== undefined && log.status_code !== null ? log.status_code : (isError ? 'ERR' : 'OK')}
+                          </span>
+                        </td>
+                      ) : (
+                        <td style={{ padding: '12px 16px', color: isError ? '#DC2626' : '#475569', fontWeight: '500' }}>
+                          {isError ? '-' : `${log.response_time} ms`}
+                        </td>
+                      )}
+
+                      {/* 👇 智能 Result 列：巧妙融合 HTTP 的延迟信息 */}
                       <td style={{ padding: '12px 16px', color: '#475569' }}>
-                        {isError ? 'Error' : `Success - ${log.response_time}ms`}
+                        {isError ? (
+                          <span style={{ color: '#DC2626', fontWeight: '600' }}>Error</span>
+                        ) : (
+                          <span style={{ color: '#059669', fontWeight: '500' }}>
+                            {isHttp ? `Success (${log.response_time}ms)` : 'Success'}
+                          </span>
+                        )}
                       </td>
+
+                      {/* 👇 AI Insight：放大 maxWidth 以容纳更多文本，超出才悬停显示 */}
                       <td style={{ padding: '12px 16px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }} title={aiInsight}>
                         {isError ? <AlertTriangle size={14} color="#ef4444" style={{flexShrink: 0}} /> : <CheckCircle size={14} color="#10b981" style={{flexShrink: 0}} />}
-                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '250px' }}>
+                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '400px' }}>
                           {aiInsight}
                         </span>
                       </td>
@@ -462,7 +478,7 @@ const WebsiteDetails = () => {
         </button>
       </div>
 
-      {/* 👇 4. 動態 Tab Navigation --- */}
+      {/* --- 動態 Tab Navigation --- */}
       <div style={{ display: 'flex', gap: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '0' }}>
         {hasPing && (
           <button onClick={() => setActiveTab('ping')} style={getTabStyle(activeTab === 'ping')}>
@@ -476,7 +492,7 @@ const WebsiteDetails = () => {
         )}
       </div>
 
-      {/* 👇 5. 動態 Tab Content --- */}
+      {/* --- 動態 Tab Content --- */}
       {activeTab === 'ping' && hasPing ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease-in-out' }}>
           
@@ -501,14 +517,14 @@ const WebsiteDetails = () => {
             </div>
           </div>
 
-          <LogsTable logsData={currentLogs} monitorType="Ping" />
+          {/* 👇 渲染 PING 的日志表 */}
+          <LogsTable logsData={currentLogs} monitorType="PING" />
 
         </div>
       ) : activeTab === 'http' && hasHttp ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease-in-out' }}>
           
           <div style={{ display: 'flex', gap: '20px' }}>
-            {/* 👇 修改點：即使是 0，也會明確顯示為 HTTP 0 (Network Error)，而不是 Error */}
             <KpiCard 
               icon={<Globe size={32} color={(!latestLog || latestLog.status_code >= 400 || latestLog.status_code === 0) ? "#ef4444" : "#10b981"} />} 
               title="Current HTTP Status" 
@@ -534,6 +550,7 @@ const WebsiteDetails = () => {
             </div>
           </div>
 
+          {/* 👇 渲染 HTTP 的日志表 */}
           <LogsTable logsData={currentLogs} monitorType="HTTP" />
 
         </div>
