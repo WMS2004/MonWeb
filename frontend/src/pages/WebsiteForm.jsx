@@ -14,7 +14,7 @@ const MonitorConfigCard = ({ type, config, onChange }) => {
   const isHttp = type === 'http';
   return (
     <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginTop: '10px', display: 'flex', gap: '20px' }}>
-      <InputGroup label={`${isHttp ? 'HTTP' : 'Ping'} 专属检测频率`}>
+      <InputGroup label={`${isHttp ? 'HTTP' : 'Ping'} Dedicated detection frequency`}>
         <select value={config.interval} onChange={(e) => onChange(type, 'interval', parseInt(e.target.value))} style={inputStyle}>
           <option value="1">Every 1 minute</option>
           <option value="5">Every 5 minutes</option>
@@ -22,7 +22,7 @@ const MonitorConfigCard = ({ type, config, onChange }) => {
           <option value="60">Every 1 hour</option>
         </select>
       </InputGroup>
-      <InputGroup label={`${isHttp ? 'HTTP' : 'Ping'} 专属超时时间 (秒)`}>
+      <InputGroup label={`${isHttp ? 'HTTP' : 'Ping'} Dedicated timeout (seconds)`}>
         <input type="number" value={config.timeout} onChange={(e) => onChange(type, 'timeout', parseInt(e.target.value))} style={inputStyle} min="1" max="60"/>
       </InputGroup>
     </div>

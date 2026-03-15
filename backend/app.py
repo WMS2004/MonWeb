@@ -74,6 +74,22 @@ class AlertSetting(db.Model):
     smart_mute = db.Column(db.Boolean, default=True) # 智能静音
     mp3_url = db.Column(db.String(500), default='https://actions.google.com/sounds/v1/alarms/beep_short.ogg')
 
+# --- 定义全局的 User-Agent 池 ---
+USER_AGENT_POOL = [
+    # Windows - Chrome
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    # Windows - Edge
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0",
+    # Windows - Firefox
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    # macOS - Safari
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    # macOS - Chrome
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    # Linux - Chrome
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+]
+
 # 核心监控逻辑 PING
 def ping_host(host, timeout_sec):
     # 执行 PING
@@ -104,22 +120,6 @@ def ping_host(host, timeout_sec):
         return False, 0, 0, f"Process Error: Command execution exceeded {timeout_sec}s."
     except Exception as e:
         return False, 0, 0, f"System Exception: {str(e)}"
-
-# --- 定义全局的 User-Agent 池 ---
-USER_AGENT_POOL = [
-    # Windows - Chrome
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    # Windows - Edge
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0",
-    # Windows - Firefox
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
-    # macOS - Safari
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
-    # macOS - Chrome
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    # Linux - Chrome
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-]
 
 def http_check(url, timeout_sec):
     """
@@ -160,55 +160,43 @@ def http_check(url, timeout_sec):
         return False, 0, 0, f"Request Exception: {str(e)}"
 
 # 单站扫描函数，供多线程池调用
-def execute_single_task(app, task_id):
-    with app.app_context():
-        task = db.session.get(MonitorTask, task_id)
-        if not task: return
-        site = task.website
+def execute_single_task(task_data):
+    target = task_data['url']
+    is_up = False
+    latency, status_code = 0, 0
+    error_msg = None
 
-        target = site.url
-        is_up = False
-        latency, status_code = 0,0
-        error_msg = None
-
-        # 1. 根据类型分配检测任务
-        if task.monitor_type == 'ping':
-            clean_target = target.replace('https://', '').replace('http://', '').split('/')[0]
-            is_up, latency, status_code, error_msg = ping_host(clean_target, task.timeout)
-        elif task.monitor_type == 'http':
-            is_up, latency, status_code, error_msg = http_check(target, task.timeout)
-            
-        # 2. 智能状态判断 (与旧逻辑类似)
-        if not is_up:
-            new_status = "Down"
-        elif task.monitor_type == 'ping' and latency > 500:
-            new_status = "Warning"
-        elif task.monitor_type == 'http' and latency > 3000:
-            new_status = "Warning"
-        else:
-            new_status = "Up"
-            
-        task.status = new_status
-        task.last_checked = datetime.now()
+    # 1. 根據類型分配檢測任務
+    if task_data['type'] == 'ping':
+        clean_target = target.replace('https://', '').replace('http://', '').split('/')[0]
+        is_up, latency, status_code, error_msg = ping_host(clean_target, task_data['timeout'])
+    elif task_data['type'] == 'http':
+        is_up, latency, status_code, error_msg = http_check(target, task_data['timeout'])
         
-        # 3. 写入包含了【详细错误原因】的日志表！
-        new_log = MonitoringLog(
-            monitor_task_id=task.id,
-            response_time=latency,
-            status_code=status_code,
-            status=new_status,
-            error_details=error_msg # <- 这个就是喂给AI的灵魂数据！
-        )
-        db.session.add(new_log)
-        db.session.commit()
+    # 2. 智能狀態判斷
+    if not is_up:
+        new_status = "Down"
+    elif task_data['type'] == 'ping' and latency > 500:
+        new_status = "Warning"
+    elif task_data['type'] == 'http' and latency > 3000:
+        new_status = "Warning"
+    else:
+        new_status = "Up"
         
-        log_text = f"[{task.monitor_type.upper()}] {site.name}: {new_status} ({latency}ms)"
-        if error_msg: log_text += f" -> Error: {error_msg}"
-        print(log_text)
+    # 3. 處理完畢，把結果打包成字典「回傳」給主排程器
+    return {
+        "task_id": task_data['id'],
+        "status": new_status,
+        "latency": latency,
+        "status_code": status_code,
+        "error_msg": error_msg,
+        "monitor_type": task_data['type'],
+        "site_name": task_data['name']
+    }  
 
 # 全站扫描函数，供定时器调用
 def scan_all_websites():
-    """使用多线程池并发执行所有监控任务"""
+    """使用多執行緒併發執行所有監控任務，跑完後【統一合併寫入】資料庫"""
     with app.app_context():
         print(f"\n[Scheduler] Starting scan at {datetime.now().strftime('%H:%M:%S')}...")
         tasks = MonitorTask.query.all()
@@ -216,22 +204,62 @@ def scan_all_websites():
         if not tasks:
             print("[Scheduler] No tasks to scan.")
             return
+            
         task_to_run = []
         now = datetime.now()
         for task in tasks:
             if not task.last_checked or now >= task.last_checked + timedelta(minutes=task.interval):
                 task_to_run.append(task)
+                
         if not task_to_run:
             print("[Scheduler] No tasks are due for scanning at this time.")
             return
+            
         print(f"[Scheduler] {len(task_to_run)} tasks are due for scanning.")
 
-        # 使用线程池并发执行，max_workers 控制并发数量
+        # 1. 將需要用到的資料提取出來，打包給執行緒 (避免跨執行緒操作 SQLAlchemy 物件)
+        tasks_data = [{
+            'id': t.id,
+            'url': t.website.url,
+            'type': t.monitor_type,
+            'timeout': t.timeout,
+            'name': t.website.name
+        } for t in task_to_run]
+
+        results = []
+        
+        # 2. 開啟多執行緒，把任務派發出去
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            # 传递 app 对象进去以重建上下文
-            futures = [executor.submit(execute_single_task, app, task.id) for task in task_to_run]
-            concurrent.futures.wait(futures)
-            
+            # 提交任務並收集 Future 狀態
+            futures = [executor.submit(execute_single_task, td) for td in tasks_data]
+            # 等待所有執行緒跑完，並收集它們回傳的結果 (results)
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+        
+        # 3. 🎯 核心精髓：所有網路請求都跑完了，現在開始「一次性」寫入資料庫
+        for res in results:
+            task = db.session.get(MonitorTask, res['task_id'])
+            if task:
+                task.status = res['status']
+                task.last_checked = datetime.now()
+                
+                new_log = MonitoringLog(
+                    monitor_task_id=task.id,
+                    response_time=res['latency'],
+                    status_code=res['status_code'],
+                    status=res['status'],
+                    error_details=res['error_msg']
+                )
+                db.session.add(new_log)
+                
+                # 印出終端機 Log
+                log_text = f"[{res['monitor_type'].upper()}] {res['site_name']}: {res['status']} ({res['latency']}ms)"
+                if res['error_msg']: log_text += f" -> Error: {res['error_msg']}"
+                print(log_text)
+        
+        # 💡 這一行最重要：統一提交！保證所有的 Log 都是「同生共死」的
+        db.session.commit()
+        
         print("[Scheduler] Scan finished.\n")
 
 # --- 4. 启动定时任务 ---
@@ -880,7 +908,7 @@ def toggle_site_mute(id):
     db.session.commit()
     return jsonify({"message": "Mute status updated"})
 
-# 👇 新增：获取全站 Top 30 警报/异常历史记录
+# 获取全站 Top 30 警报/异常历史记录
 @app.route('/api/alerts/history', methods=['GET'])
 def get_alert_history():
     # 联表查询：通过 MonitorTask 作为桥梁，连接 Log 和 Website
@@ -889,22 +917,24 @@ def get_alert_history():
         .join(Website, MonitorTask.website_id == Website.id)\
         .filter(
             db.or_(
-                MonitoringLog.status_code != 200,
-                MonitoringLog.response_time == 0,
-                MonitoringLog.status == 'Down'
+                MonitoringLog.status == 'Down',
+                MonitoringLog.status == 'Warning' # 把 Warning 也納入警報歷史
             )
         ).order_by(MonitoringLog.timestamp.desc()).limit(30).all()
 
     output = []
-    # 注意：这里现在需要解包 3 个对象 (log, task, site)
     for log, task, site in logs:
         output.append({
             "id": log.id,
-            "website_name": f"{site.name} ({task.monitor_type.upper()})", # 加上是HTTP还是PING挂了
+            "website_name": site.name,
+            "monitor_type": task.monitor_type.upper(), # 獨立一個欄位告訴前端是 HTTP 還是 PING
             "url": site.url,
+            "status": log.status, # 傳遞真實狀態 (Down 或 Warning)
             "status_code": log.status_code,
             "response_time": log.response_time,
-            "time": log.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            "error_details": log.error_details, # 把具體報錯原因傳給前端
+            "time": log.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+            "is_muted": site.is_muted
         })
     return jsonify(output)
 
