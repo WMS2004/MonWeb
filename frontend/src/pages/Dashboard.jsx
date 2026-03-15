@@ -351,7 +351,7 @@
 
 import React, { useState, useEffect } from 'react'; 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Activity, Server, AlertTriangle, CheckCircle, ArrowRight, RefreshCw, Zap } from 'lucide-react';
+import { Activity, Server, AlertTriangle, CheckCircle, ArrowRight, RefreshCw, Zap, Info } from 'lucide-react';
 
 // --- 辅助小组件 ---
 const StatCard = ({ title, value, color, icon: Icon }) => (
@@ -373,7 +373,7 @@ const StatCard = ({ title, value, color, icon: Icon }) => (
 const Dashboard = () => {
   // --- State 定义 ---
   const [websites, setWebsites] = useState([]); 
-  const [chartData, setChartData] = useState([]); // 👈 新增：真实图表数据
+  const [chartData, setChartData] = useState([]); // 新增：用于存放真实图表数据
   const [loading, setLoading] = useState(true); 
   const [scanning, setScanning] = useState(false); 
 
@@ -396,12 +396,12 @@ const Dashboard = () => {
       });
   };
 
-  // 👇 新增：从后端获取图表趋势数据
+  // 👇 新增：从后端获取真实的图表趋势数据
   const fetchChartData = () => {
     fetch('http://localhost:5000/api/dashboard/chart')
-      .then(res => res.json())
+      .then(response => response.json())
       .then(data => setChartData(data))
-      .catch(err => console.error("Error fetching chart data:", err));
+      .catch(error => console.error("Error fetching chart data:", error));
   };
 
   // 手动触发扫描
@@ -411,7 +411,7 @@ const Dashboard = () => {
       .then(response => response.json())
       .then(data => {
         fetchWebsites(); 
-        fetchChartData(); // 扫描完顺便刷新图表
+        fetchChartData(); // 扫描完立刻刷新图表数据
         setScanning(false);
       })
       .catch(error => {
@@ -423,7 +423,7 @@ const Dashboard = () => {
   // 调用 AI 接口进行分析
   const handleAnalyze = () => {
     setAnalyzing(true);
-    setAiInsight(null); 
+    setAiInsight(null); // 清空上次的结果
 
     fetch('http://localhost:5000/api/generate-report', {
       method: 'POST',
@@ -451,20 +451,22 @@ const Dashboard = () => {
   // 页面一加载就运行
   useEffect(() => {
     fetchWebsites();
-    fetchChartData(); // 初始抓取图表
-    
+    fetchChartData(); // 初次加载图表数据
+
+    // 设置定时器，每 15 秒自动静默获取一次最新数据
     const intervalId = setInterval(() => {
       fetch('http://localhost:5000/api/websites')
         .then(response => response.json())
         .then(data => setWebsites(data))
-        .catch(error => console.error("Auto-refresh websites failed:", error));
+        .catch(error => console.error("Auto-refresh failed:", error));
         
-      fetchChartData(); // 每隔 15 秒同步刷新图表
+      fetchChartData(); // 定时刷新图表
     }, 15000); 
 
     return () => clearInterval(intervalId);
   }, []);
 
+  // 动态计算各个状态的网站数量
   const upCount = websites.filter(site => site.status === 'Up').length;
   const downCount = websites.filter(site => site.status === 'Down').length;
   const warningCount = websites.filter(site => site.status === 'Warning').length;
@@ -483,7 +485,7 @@ const Dashboard = () => {
       {/* --- B. 中间内容区 --- */}
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         
-        {/* 左侧：列表 */}
+        {/* 左侧：从数据库读取的真实列表 */}
         <div style={{ flex: 2, backgroundColor: 'white', padding: '20px', borderRadius: '12px', minWidth: '300px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0 }}>Live Status (Real-time)</h3>
@@ -508,11 +510,21 @@ const Dashboard = () => {
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '10px' }}>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '10px',
+            maxHeight: '350px',
+            overflowY: 'auto',
+            paddingRight: '10px'
+            }}>
             {loading && !scanning ? (
               <p style={{ color: '#666', padding: '20px', textAlign: 'center' }}>Connecting to MonWeb Brain...</p>
             ) : websites.length === 0 ? (
-              <p style={{ color: '#999', padding: '20px', textAlign: 'center' }}>Database is empty.</p>
+              <p style={{ color: '#999', padding: '20px', textAlign: 'center' }}>
+                Database is empty. <br/>
+                (Try clicking "Scan Now" or run init-db)
+              </p>
             ) : (
               websites.map((site) => (
                 <div key={site.id} style={{
@@ -535,22 +547,27 @@ const Dashboard = () => {
                   <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
                     {site.monitors && site.monitors.map(monitor => {
                       let displayText = monitor.type.toUpperCase();
-                      if (monitor.type === 'http' && monitor.status_code) displayText += ` ${monitor.status_code}`;
+                      if (monitor.type === 'http' && monitor.status_code) {
+                        displayText += ` ${monitor.status_code}`;
+                      }
                       displayText += `: ${monitor.status}`;
-                      if (monitor.response_time) displayText += ` (${monitor.response_time}ms)`;
                       
+                      if (monitor.response_time) {
+                        displayText += ` (${monitor.response_time}ms)`;
+                      } 
                       return (
-                      <span key={monitor.id} title={monitor.error || "Normal / No Errors"} 
+                        <span key={monitor.id} 
+                        title={monitor.error || "Normal / No Errors"} 
                         style={{
-                          fontSize: '11px', padding: '3px 8px', borderRadius: '4px',
-                          backgroundColor: monitor.status === 'Up' ? '#dcfce7' : monitor.status === 'Warning' ? '#fef3c7' : '#fee2e2',
-                          color: monitor.status === 'Up' ? '#166534' : monitor.status === 'Warning' ? '#92400e' : '#991b1b',
-                          border: `1px solid ${monitor.status === 'Up' ? '#bbf7d0' : monitor.status === 'Warning' ? '#fde68a' : '#fecaca'}`,
-                          cursor: monitor.error ? 'help' : 'default'
-                      }}>
-                        {displayText}
-                      </span>
-                    );
+                            fontSize: '11px', padding: '3px 8px', borderRadius: '4px',
+                            backgroundColor: monitor.status === 'Up' ? '#dcfce7' : monitor.status === 'Warning' ? '#fef3c7' : '#fee2e2',
+                            color: monitor.status === 'Up' ? '#166534' : monitor.status === 'Warning' ? '#92400e' : '#991b1b',
+                            border: `1px solid ${monitor.status === 'Up' ? '#bbf7d0' : monitor.status === 'Warning' ? '#fde68a' : '#fecaca'}`,
+                            cursor: monitor.error ? 'help' : 'default' 
+                        }}>
+                          {displayText}
+                        </span>
+                      );
                     })}
                   </div>
                 </div>
@@ -561,39 +578,59 @@ const Dashboard = () => {
 
         {/* 右侧：AI Insights */}
         <div style={{ flex: 1, backgroundColor: 'white', padding: '20px', borderRadius: '12px', minWidth: '250px', border: '1px solid #E0E7FF', display: 'flex', flexDirection: 'column' }}>
+          
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '20px' }}>✨</span>
               <h3 style={{ margin: 0, color: '#4F46E5' }}>AI Insights</h3>
             </div>
             <button 
-              onClick={handleAnalyze} disabled={analyzing}
+              onClick={handleAnalyze} 
+              disabled={analyzing}
               style={{ 
-                border: 'none', background: analyzing ? '#E0E7FF' : '#4F46E5', color: analyzing ? '#4F46E5' : 'white',
-                cursor: analyzing ? 'not-allowed' : 'pointer', padding: '6px 12px', borderRadius: '6px', fontSize: '13px',
-                fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.3s'
-              }}>
+                border: 'none', 
+                background: analyzing ? '#E0E7FF' : '#4F46E5', 
+                color: analyzing ? '#4F46E5' : 'white',
+                cursor: analyzing ? 'not-allowed' : 'pointer',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.3s'
+              }}
+            >
               {analyzing ? <RefreshCw size={14} className="spin-animation" /> : <Zap size={14} />} 
               {analyzing ? "Thinking..." : "Analyze"}
             </button>
           </div>
 
-          <div style={{ color: '#555', lineHeight: '1.6', fontSize: '14px', flex: 1, maxHeight: '350px', overflowY: 'auto', paddingRight: '10px' }}>
+          <div style={{ 
+            color: '#555', lineHeight: '1.6', fontSize: '14px', flex: 1, 
+            maxHeight: '350px', overflowY: 'auto', paddingRight: '10px' 
+            }}>
             {analyzing ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '10px', color: '#6366F1' }}>
-                <span className="spin-animation">✨</span><span style={{ fontSize: '13px' }}>AI is analyzing system logs...</span>
+                <span className="spin-animation">✨</span>
+                <span style={{ fontSize: '13px' }}>AI is analyzing system logs...</span>
               </div>
             ) : aiInsight ? (
               aiInsight.error ? (
-                <div style={{ color: '#EF4444', backgroundColor: '#FEE2E2', padding: '10px', borderRadius: '8px' }}>{aiInsight.error}</div>
+                <div style={{ color: '#EF4444', backgroundColor: '#FEE2E2', padding: '10px', borderRadius: '8px' }}>
+                  {aiInsight.error}
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ backgroundColor: '#F8FAFC', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #4F46E5' }}>
-                    <strong style={{ color: '#1E293B', display: 'block', marginBottom: '4px' }}>Executive Summary:</strong>{aiInsight.summary}
+                    <strong style={{ color: '#1E293B', display: 'block', marginBottom: '4px' }}>Executive Summary:</strong>
+                    {aiInsight.summary}
                   </div>
                   {aiInsight.rootCause && (
                     <div style={{ backgroundColor: '#F8FAFC', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #F59E0B' }}>
-                       <strong style={{ color: '#1E293B', display: 'block', marginBottom: '4px' }}>Root Cause Analysis:</strong>{aiInsight.rootCause}
+                       <strong style={{ color: '#1E293B', display: 'block', marginBottom: '4px' }}>Root Cause Analysis:</strong>
+                       {aiInsight.rootCause}
                     </div>
                   )}
                 </div>
@@ -608,35 +645,56 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* --- C. 底部大图表 (已接入真实数据) --- */}
-      <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', height: '350px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <h3 style={{ margin: '0 0 20px 0', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Activity size={20} color="#4F46E5" /> Global Average Response Time Trend (ms)
-        </h3>
-        {chartData.length === 0 ? (
-          <div style={{ height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#94a3b8' }}>
-            {loading ? "Loading chart data..." : "Not enough data points yet. Click 'Scan Now' to populate."}
+      {/* --- C. 底部大图表 (已接入真实数据与优化 UX) --- */}
+      <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', height: '380px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        
+        {/* 👇 优化的标题和提示词 Icon */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+          <h3 style={{ margin: 0, color: '#111827', fontSize: '18px' }}>Overall Average Response Time (All Sites)</h3>
+          <div 
+            title="Displays the aggregated average HTTP and PING response times across all monitored targets. (展示所有受监控目标的 HTTP 和 PING 平均响应时间)"
+            style={{ cursor: 'help', display: 'flex', alignItems: 'center' }}
+          >
+            <Info size={16} color="#94a3b8" />
           </div>
-        ) : (
-          <ResponsiveContainer width="99%" height="85%">
-            <LineChart data={chartData} margin={{ top: 5, right: 20, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', fontSize: '13px' }} />
-              <Legend verticalAlign="top" height={36} iconType="circle" />
-              {/* HTTP 线：深紫色 */}
-              <Line type="monotone" dataKey="http_ms" name="HTTP Avg (ms)" stroke="#4F46E5" strokeWidth={3} dot={{ r: 4, fill: '#4F46E5', strokeWidth: 0 }} activeDot={{ r: 6 }} animationDuration={1000} />
-              {/* PING 线：翠绿色 */}
-              <Line type="monotone" dataKey="ping_ms" name="PING Avg (ms)" stroke="#10B981" strokeWidth={3} dot={{ r: 4, fill: '#10B981', strokeWidth: 0 }} activeDot={{ r: 6 }} animationDuration={1000} />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
+        </div>
+
+        <ResponsiveContainer width="99%" height="85%">
+          <LineChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+            <XAxis dataKey="time" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+            
+            {/* 👇 Y 轴加入 ms 单位后缀 */}
+            <YAxis tickFormatter={(value) => `${value} ms`} tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} width={65} />
+            
+            {/* 👇 Tooltip 显示具体数值和类型 */}
+            <Tooltip 
+              formatter={(value, name) => [`${value} ms`, name === 'http_ms' ? 'HTTP Average' : 'PING Average']}
+              labelStyle={{ fontWeight: 'bold', color: '#1e293b' }}
+              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+            />
+            
+            {/* 👇 图例，告诉用户蓝色是HTTP，绿色是PING */}
+            <Legend 
+              verticalAlign="top" 
+              height={36} 
+              formatter={(value) => <span style={{ color: '#475569', fontWeight: 500 }}>{value === 'http_ms' ? 'HTTP Average' : 'PING Average'}</span>}
+            />
+            
+            {/* 两条数据线 */}
+            <Line type="monotone" dataKey="http_ms" stroke="#4F46E5" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} animationDuration={1500} />
+            <Line type="monotone" dataKey="ping_ms" stroke="#10B981" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} animationDuration={1500} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       <style>{`
-        .spin-animation { animation: spin 1s linear infinite; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .spin-animation {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          100% { transform: rotate(360deg); }
+        }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
