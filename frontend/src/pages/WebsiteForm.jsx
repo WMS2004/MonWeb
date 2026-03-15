@@ -219,7 +219,9 @@ const MonitorConfigCard = ({ type, config, onChange }) => {
   return (
     <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginTop: '12px', display: 'flex', gap: '20px', animation: 'fadeIn 0.3s ease-in-out' }}>
       <InputGroup label={`${isHttp ? 'HTTP' : 'PING'} Dedicated detection frequency`}>
-        <select value={config.interval} onChange={(e) => onChange(type, 'interval', parseInt(e.target.value))} style={inputStyle}>
+        {/* 👇 关键修改 1：使用 parseFloat，并加入 0.5 (30秒) 选项 👇 */}
+        <select value={config.interval} onChange={(e) => onChange(type, 'interval', parseFloat(e.target.value))} style={inputStyle}>
+          <option value="0.5">Every 30 seconds</option>
           <option value="1">Every 1 minute</option>
           <option value="2">Every 2 minutes</option>
           <option value="3">Every 3 minutes</option>
@@ -265,14 +267,12 @@ const WebsiteForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(!!editSiteId);
 
-  // 如果是编辑模式，获取原有数据
   useEffect(() => {
     if (editSiteId) {
       fetch(`http://localhost:5000/api/websites/${editSiteId}/logs`)
         .then(res => res.json())
         .then(data => {
           if (data && data.website) {
-            // 👇 优化：在编辑模式下，自动把后台的 https:// 前缀去掉，让界面更清爽
             let cleanUrl = data.website.url || '';
             if (cleanUrl.startsWith('https://')) cleanUrl = cleanUrl.replace('https://', '');
             else if (cleanUrl.startsWith('http://')) cleanUrl = cleanUrl.replace('http://', '');
@@ -304,6 +304,7 @@ const WebsiteForm = () => {
       if (exists) {
         return prev.filter(m => m.type !== type); 
       } else {
+        // PING 默认也可以设置为 0.5 (30秒) 或者 1
         const defaultInterval = type === 'ping' ? 1 : 5;
         const defaultTimeout = type === 'ping' ? 2 : 10;
         return [...prev, { type, interval: defaultInterval, timeout: defaultTimeout }];
@@ -321,20 +322,17 @@ const WebsiteForm = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // 验证 1: Timeout 不能空白
     const isTimeoutValid = monitors.every(m => m.timeout !== '' && m.timeout > 0);
     if (!isTimeoutValid) {
       alert("Please ensure all Timeout fields have a valid number.");
       return;
     }
 
-    // 验证 2: 必须选一种监控
     if (monitors.length === 0) {
       alert("Please select at least one detection type.");
       return;
     }
 
-    // 验证 3: URL 自动补全防呆机制 (自动加 https://)
     let finalUrl = formData.url.trim();
     if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
       finalUrl = 'https://' + finalUrl;
@@ -368,7 +366,6 @@ const WebsiteForm = () => {
     .finally(() => setIsSubmitting(false));
   };
 
-  // RBAC 拦截
   if (isUserRole) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: '#991b1b', maxWidth: '600px', margin: '0 auto' }}>
@@ -401,13 +398,11 @@ const WebsiteForm = () => {
       <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)', border: '1px solid #f1f5f9' }}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
-          {/* 基本信息 */}
           <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
             <InputGroup label="Website Name *">
               <input required name="name" value={formData.name} onChange={handleBasicChange} placeholder="For example: Production API" style={inputStyle} />
             </InputGroup>
             <InputGroup label="Website URL *">
-              {/* 👇 关键修复：把 type="url" 换成了 type="text"，彻底解放用户的输入自由 👇 */}
               <input required type="text" name="url" value={formData.url} onChange={handleBasicChange} placeholder="apu.edu.my" style={inputStyle} />
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>System will automatically prepend https:// if missing</span>
             </InputGroup>
@@ -415,12 +410,10 @@ const WebsiteForm = () => {
 
           <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
 
-          {/* 监控项配置 */}
           <div>
             <label style={{ fontSize: '16px', fontWeight: 'bold', color: '#0f172a', marginBottom: '15px', display: 'block' }}>Detection Types & Configuration</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* HTTP 配置块 */}
               <div>
                 <div 
                   onClick={() => toggleMonitorType('http')}
@@ -439,7 +432,6 @@ const WebsiteForm = () => {
                 {hasMonitor('http') && <MonitorConfigCard type="http" config={getMonitor('http')} onChange={handleMonitorConfigChange} />}
               </div>
 
-              {/* Ping 配置块 */}
               <div>
                 <div 
                   onClick={() => toggleMonitorType('ping')}

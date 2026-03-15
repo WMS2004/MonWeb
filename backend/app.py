@@ -50,7 +50,7 @@ class MonitorTask(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     website_id = db.Column(db.Integer, db.ForeignKey('website.id'), nullable=False)
     monitor_type = db.Column(db.String(20), nullable=False) # 'http', 'ping', 未来可加 'ssl', 'dns'
-    interval = db.Column(db.Integer, default=5)      # 专属的监控频率
+    interval = db.Column(db.Float, default=5.0)      # 专属的监控频率
     timeout = db.Column(db.Integer, default=10)      # 专属的超时阈值
     status = db.Column(db.String(20), default='Unknown') # 当前任务是 Up 还是 Down
     last_checked = db.Column(db.DateTime, default=datetime.now)
@@ -63,7 +63,7 @@ class MonitoringLog(db.Model):
     status_code = db.Column(db.Integer) # 200, 404, 500
     status = db.Column(db.String(20))   # "UP" or "DOWN"
     error_details = db.Column(db.Text, nullable=True) # 可选：存储错误信息
-    timestamp = db.Column(db.DateTime, default=datetime.now)
+    timestamp = db.Column(db.DateTime, default=datetime.now, index=True)
 
 class AlertSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -262,12 +262,35 @@ def scan_all_websites(force=False):
         
         print("[Scheduler] Scan finished.\n")
 
+# 数据库自动清理机制 (Housekeeping)
+def cleanup_old_logs():
+    """定期清理超过 30 天的旧日志，防止数据库无限膨胀"""
+    with app.app_context():
+        try:
+            # 计算 30 天前的时间节点 (因为 AI 报告最多需要 30 天的数据)
+            cutoff_date = datetime.now() - timedelta(days=30)
+            
+            # 批量删除过期的海量日志
+            deleted_count = MonitoringLog.query.filter(MonitoringLog.timestamp < cutoff_date).delete()
+            db.session.commit()
+            
+            if deleted_count > 0:
+                print(f"🧹 [Housekeeping] Successfully cleaned up {deleted_count} outdated logs (older than 30 days).")
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ [Housekeeping Error] Failed to clean logs: {e}")
+
 # --- 4. 启动定时任务 ---
 # 只有在主进程才启动 Scheduler，防止 Debug 模式下启动两次
 if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     scheduler = BackgroundScheduler()
-    # 每30秒扫描一次
-    scheduler.add_job(func=scan_all_websites, trigger="interval", seconds=30) # 每30秒自动扫描
+    
+    # 1. 核心监控任务：每30秒自动扫描
+    scheduler.add_job(func=scan_all_websites, trigger="interval", seconds=30) 
+    
+    # 2. 👇 新增的打扫任务：每 24 小时自动触发一次数据库清理
+    scheduler.add_job(func=cleanup_old_logs, trigger="interval", hours=24) 
+    
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown()) # 退出时关闭
 
@@ -395,8 +418,8 @@ def add_website():
         new_task = MonitorTask(
             website_id=new_site.id,
             monitor_type=m['type'],
-            interval=int(m.get('interval', 5)),
-            timeout=int(m.get('timeout', 10))
+            interval=float(m.get('interval', 5.0)),
+            timeout=int(m.get('timeout', 10.0))
         )
         db.session.add(new_task)
         
@@ -427,14 +450,14 @@ def update_website(id):
             existing_task = MonitorTask.query.filter_by(website_id=site.id, monitor_type=m['type']).first()
             if existing_task:
                 # 只更新参数，保留原有 ID，这样历史日志就不会丢失！
-                existing_task.interval = int(m.get('interval', 5))
-                existing_task.timeout = int(m.get('timeout', 10))
+                existing_task.interval = float(m.get('interval', 5.0))
+                existing_task.timeout = int(m.get('timeout', 10.0))
             else:
                 new_task = MonitorTask(
                     website_id=site.id,
                     monitor_type=m['type'],
-                    interval=int(m.get('interval', 5)),
-                    timeout=int(m.get('timeout', 10))
+                    interval=float(m.get('interval', 5.0)),
+                    timeout=int(m.get('timeout', 10.0))
                 )
                 db.session.add(new_task)
                 
@@ -1008,25 +1031,57 @@ def auto_setup_database():
             db.session.commit()
             print("✅ [System] Admin account created automatically.")
 
-        # 3. 自动塞入测试数据（如果数据库是空的）
+        # 3. 自动塞入全新架构的测试数据（如果数据库是空的）
         if not Website.query.first():
-            print("⏳ [System] Populating test websites...")
+            print("⏳ [System] Populating production websites...")
             sites_data = [
-                {"name": "Eye On The Ball", "url": "https://eyeontheballfilm.com/"},
-                {"name": "StarProperty Fair", "url": "https://fair.starproperty.my/"},
-                {"name": "Kirana", "url": "https://kirana.my/"},
-                {"name": "StarProperty Pullout", "url": "https://pullout.starproperty.my/"},
-                {"name": "Rage", "url": "https://www.rage.com.my/"},
-                {"name": "Kuntum", "url": "https://www.kuntum.com.my/"},
-                {"name": "Kuali Startup", "url": "https://startup.kuali.com/"},
-                {"name": "Fake Website", "url": "this-site-definitely-does-not-exist.com"}
+                # === 第一组：每 30秒 (0.5分钟) 检查 PING ===
+                {"name": "Majoriti", "url": "https://majoriti.com.my/", "ping_int": 0.5},
+                {"name": "mStar", "url": "https://www.mstar.com.my/", "ping_int": 0.5},
+                {"name": "Suria", "url": "https://suria.my/", "ping_int": 0.5},
+                {"name": "Star Media Group", "url": "https://www.starmediagroup.my/", "ping_int": 0.5},
+                {"name": "The Star", "url": "https://www.thestar.com.my/", "ping_int": 0.5},
+
+                # === 第二组：每 1分钟 检查 PING ===
+                {"name": "The Star Charts", "url": "https://charts.thestar.com.my/", "ping_int": 1},
+                {"name": "Suria Dengar", "url": "https://dengar.suria.my/", "ping_int": 1},
+                {"name": "Kuali", "url": "https://www.kuali.com/", "ping_int": 1},
+                {"name": "988 Shop Now", "url": "https://shopnow.988.com.my/", "ping_int": 1},
+                {"name": "The Star Events", "url": "https://events.thestar.com.my/", "ping_int": 1},
+                {"name": "The Star Login", "url": "https://login.thestar.com.my/", "ping_int": 1},
+                {"name": "myStarjob", "url": "https://mystarjob.com/", "ping_int": 1},
+                {"name": "Star Leaders Council", "url": "https://starleaderscouncil.com.my/", "ping_int": 1},
+                {"name": "SMG 360", "url": "https://smg360.com.my/", "ping_int": 1},
+                {"name": "SOBA", "url": "https://soba.com.my/", "ping_int": 1},
+                {"name": "The Star SSO", "url": "https://sso.thestar.com.my/", "ping_int": 1},
+                {"name": "The Star TV", "url": "https://www.thestartv.com/", "ping_int": 1},
+                {"name": "The Star Conference", "url": "https://conference.thestar.com.my/", "ping_int": 1},
+                {"name": "StarProperty", "url": "https://www.starproperty.my/", "ping_int": 1},
+                {"name": "CarSifu News", "url": "https://www.carsifu.my/news", "ping_int": 1},
+
+                # === 第三组：每 2分钟 检查 PING ===
+                {"name": "StarProperty Awards", "url": "https://awards.starproperty.my/national/2024/", "ping_int": 2},
+                {"name": "StarProperty Best", "url": "https://best.starproperty.my/", "ping_int": 2},
+                {"name": "Eye On The Ball", "url": "https://eyeontheballfilm.com/", "ping_int": 2},
+                {"name": "StarProperty Fair", "url": "https://fair.starproperty.my/", "ping_int": 2},
+                {"name": "Kirana", "url": "https://kirana.my/", "ping_int": 2},
+                {"name": "StarProperty Pullout", "url": "https://pullout.starproperty.my/", "ping_int": 2},
+                {"name": "Rage", "url": "https://www.rage.com.my/", "ping_int": 2},
+                {"name": "Kuntum", "url": "https://www.kuntum.com.my/", "ping_int": 2},
+                {"name": "Kuali Startup", "url": "https://startup.kuali.com/", "ping_int": 2},
+                {"name": "Urban Biodiversity", "url": "https://www.urban-biodiversity.thestar.com.my/sime-darby-property/", "ping_int": 2}
             ]
+            
             for s_data in sites_data:
                 site = Website(name=s_data["name"], url=s_data["url"])
                 db.session.add(site)
                 db.session.commit() 
-                http_task = MonitorTask(website_id=site.id, monitor_type='http', interval=5, timeout=10)
-                ping_task = MonitorTask(website_id=site.id, monitor_type='ping', interval=1, timeout=10)
+                
+                # 👇 所有 HTTP 任务统一设置为 4 分钟
+                http_task = MonitorTask(website_id=site.id, monitor_type='http', interval=4, timeout=10)
+                # 👇 PING 任务根据数组里的专属配置动态设置
+                ping_task = MonitorTask(website_id=site.id, monitor_type='ping', interval=s_data["ping_int"], timeout=10)
+                
                 db.session.add_all([http_task, ping_task])
             db.session.commit()
             print("✅ [System] Data populated successfully!")
