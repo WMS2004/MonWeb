@@ -15,6 +15,7 @@ import Alerts from './pages/Alerts';
 import UserManagement from './pages/UserManagement';
 import Support from './pages/Support';
 import Profile from './pages/Profile';
+import NetworkTraffic from './pages/NetworkTraffic';
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
           <Route path="support" element={<Support />} />
           <Route path="profile" element={<Profile />} />
           <Route path="/website/:id" element={<WebsiteDetails />} />
+          <Route path="traffic" element={<NetworkTraffic />} />
         </Route>
 
         {/* Catch all - Redirect to login or 404 */}
