@@ -6,13 +6,16 @@ import time
 import json 
 import concurrent.futures
 import random
+import atexit
+import threading
+from scapy.all import sniff, IP, TCP, Raw, conf
 from google import genai
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-import atexit
+
 
 app = Flask(__name__)
 CORS(app)
@@ -73,6 +76,16 @@ class AlertSetting(db.Model):
     fail_count = db.Column(db.Integer, default=2) # 触发次数
     smart_mute = db.Column(db.Boolean, default=True) # 智能静音
     mp3_url = db.Column(db.String(500), default='https://actions.google.com/sounds/v1/alarms/beep_short.ogg')
+
+# --- 网络流量抓包表 ---
+class TrafficLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+    source_ip = db.Column(db.String(50))
+    method = db.Column(db.String(10))
+    host = db.Column(db.String(255))
+    # device 可以后续通过 User-Agent 解析，现在先存默认值
+    device = db.Column(db.String(100), default="Unknown/Mobile")
 
 # --- 定义全局的 User-Agent 池 ---
 USER_AGENT_POOL = [
@@ -294,6 +307,72 @@ if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown()) # 退出时关闭
 
+# --- 抓包引擎全局变量 ---
+sniffer_thread = None
+stop_sniffing_flag = threading.Event()
+current_target_host = ""
+
+def packet_callback(packet):
+    """当抓到一个包时的回调函数"""
+    global current_target_host
+    # 只处理带有 TCP Payload (Raw) 的 80 端口数据包
+    if packet.haslayer(TCP) and packet.haslayer(Raw) and packet[TCP].dport == 80:
+        try:
+            # 尝试解码数据包内容
+            payload = packet[Raw].load.decode('utf-8', errors='ignore')
+            
+            # 检查是否是 HTTP GET 请求
+            if payload.startswith('GET') and 'Host: ' in payload:
+                # 提取 Host 域名
+                lines = payload.split('\r\n')
+                host = ""
+                for line in lines:
+                    if line.startswith('Host: '):
+                        host = line.split(' ')[1].strip()
+                        break
+                
+                # 如果这个请求访问的域名，符合我们前端设置的目标 (比如 neverssl.com)
+                if current_target_host in host:
+                    with app.app_context():
+                        new_log = TrafficLog(
+                            source_ip=packet[IP].src,
+                            method="GET",
+                            host=host
+                        )
+                        db.session.add(new_log)
+                        db.session.commit()
+                        print(f"🚨 [Sniffer] Captured: {packet[IP].src} -> {host}")
+        except Exception as e:
+            pass # 忽略解析错误的干扰包
+
+def start_sniffing_task():
+    """在后台线程中运行的抓包任务"""
+    global current_target_host
+    
+    # 动态寻找 IP 为 192.168.137.1 的热点网卡
+    hotspot_iface = None
+    for iface in conf.ifaces.values():
+        if iface.ip == '192.168.137.1':
+            hotspot_iface = iface
+            break
+            
+    if not hotspot_iface:
+        print("❌ [Sniffer Error] Could not find Hotspot interface (192.168.137.1). Is the hotspot turned on?")
+        return
+
+    print(f"[*] 🚀 Sniffer engine starting on: {hotspot_iface.name} ({hotspot_iface.ip})")
+    
+    try:
+        sniff(
+            filter="tcp port 80", 
+            iface=hotspot_iface,  # 传入真实的网卡对象，而不是字符串名字
+            prn=packet_callback, 
+            store=0, 
+            stop_filter=lambda p: stop_sniffing_flag.is_set()
+        )
+    except Exception as e:
+        print(f"❌ [Sniffer Error] Could not start sniffing: {e}")
+
 # --- 5. API 路由 ---
 @app.route('/')
 def home():
@@ -302,44 +381,6 @@ def home():
 @app.route('/api/test', methods=['GET'])
 def test_connection():
     return jsonify({"status": "success", "message": "Backend Connected"})
-
-# @app.route('/api/init-db', methods=['POST'])
-# def init_db():
-#     with app.app_context():
-#         db.create_all()
-
-#         # 初始化 admin 用户
-#         admin_user = User.query.filter_by(username='admin').first()
-#         if not admin_user:
-#             admin_user = User(username='admin', email='admin@monweb.com', password='1234', role='Admin')
-#             db.session.add(admin_user)
-
-#         if not Website.query.first():
-#             # 预设测试网站
-#             sites_data = [
-#                 {"name": "Eye On The Ball", "url": "https://eyeontheballfilm.com/"},
-#                 {"name": "StarProperty Fair", "url": "https://fair.starproperty.my/"},
-#                 {"name": "Kirana", "url": "https://kirana.my/"},
-#                 {"name": "StarProperty Pullout", "url": "https://pullout.starproperty.my/"},
-#                 {"name": "Rage", "url": "https://www.rage.com.my/"},
-#                 {"name": "Kuntum", "url": "https://www.kuntum.com.my/"},
-#                 {"name": "Kuali Startup", "url": "https://startup.kuali.com/"},
-#                 {"name": "Fake Website", "url": "this-site-definitely-does-not-exist.com"}  # 测试宕机
-#             ]
-#             for s_data in sites_data:
-#                 # 先创建网站
-#                 site = Website(name=s_data["name"], url=s_data["url"])
-#                 db.session.add(site)
-#                 db.session.commit() # 提交后 site.id 才有值
-#                 # 创建独立的监控任务
-#                 # HTTP 任务
-#                 http_task = MonitorTask(website_id=site.id, monitor_type='http', interval=5, timeout=10)
-#                 # PING 任务
-#                 ping_task = MonitorTask(website_id=site.id, monitor_type='ping', interval=1, timeout=10)
-#                 db.session.add_all([http_task, ping_task])
-#             db.session.commit()
-#             return jsonify({"message": "Database initialized with test data!"})
-#         return jsonify({"message": "Database already exists."})
 
 @app.route('/api/websites', methods=['GET'])
 def get_websites():
@@ -1016,6 +1057,48 @@ def get_dashboard_chart():
     
     # 只取最近的 15 个点以保证图表美观不拥挤
     return jsonify(output[-15:])
+
+# --- 嗅探器 API ---
+@app.route('/api/traffic/start', methods=['POST'])
+def start_traffic_sniff():
+    global sniffer_thread, stop_sniffing_flag, current_target_host
+    data = request.json
+    current_target_host = data.get('targetHost', 'neverssl.com')
+    
+    if sniffer_thread and sniffer_thread.is_alive():
+        return jsonify({"message": "Sniffer is already running"}), 200
+
+    # 启动前清空旧的历史记录
+    with app.app_context():
+        TrafficLog.query.delete()
+        db.session.commit()
+
+    stop_sniffing_flag.clear()
+    sniffer_thread = threading.Thread(target=start_sniffing_task)
+    sniffer_thread.daemon = True # 主程序退出时自动关闭
+    sniffer_thread.start()
+    
+    return jsonify({"message": "Sniffing started", "target": current_target_host})
+
+@app.route('/api/traffic/stop', methods=['POST'])
+def stop_traffic_sniff():
+    global stop_sniffing_flag
+    stop_sniffing_flag.set() # 发送停止信号给 scapy
+    return jsonify({"message": "Sniffing stopped"})
+
+@app.route('/api/traffic/logs', methods=['GET'])
+def get_traffic_logs():
+    logs = TrafficLog.query.order_by(TrafficLog.timestamp.desc()).limit(15).all()
+    output = []
+    for log in logs:
+        output.append({
+            "id": log.id,
+            "timestamp": log.timestamp.strftime("%H:%M:%S"),
+            "sourceIp": log.source_ip,
+            "method": log.method,
+            "host": log.host
+        })
+    return jsonify(output)
 
 # 👇 自动初始化数据库的函数
 def auto_setup_database():
