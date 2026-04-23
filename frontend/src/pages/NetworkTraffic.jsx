@@ -19,7 +19,6 @@ const StatCard = ({ title, value, color, icon: Icon }) => (
 
 const NetworkTraffic = () => {
   const [isSniffing, setIsSniffing] = useState(false);
-  const [targetHost, setTargetHost] = useState('neverssl.com');
   const [networkInterface, setNetworkInterface] = useState('All Interfaces (Default)');
   
   const [trafficLogs, setTrafficLogs] = useState([]);
@@ -35,7 +34,7 @@ const NetworkTraffic = () => {
         await fetch('http://localhost:5000/api/traffic/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetHost: targetHost })
+          body: JSON.stringify({})
         });
         setTrafficLogs([]); // 清空旧数据
         setChartData([]);
@@ -101,13 +100,22 @@ const NetworkTraffic = () => {
 
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <label style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold' }}>Target Host (HTTP)</label>
-            <input 
-              type="text" 
-              value={targetHost}
-              onChange={(e) => setTargetHost(e.target.value)}
-              disabled={isSniffing}
-              style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none', width: '180px', backgroundColor: isSniffing ? '#f1f5f9' : 'white' }}
-            />
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', height: '34px' }}>
+                {['neverssl.com', 'captive.apple.com', 'info.cern.ch'].map(host => (
+                  <span key={host} style={{ 
+                    padding: '4px 8px', 
+                    borderRadius: '6px', 
+                    backgroundColor: isSniffing ? '#dcfce7' : '#e2e8f0', 
+                    color: isSniffing ? '#166534' : '#475569', 
+                    fontSize: '12px', 
+                    fontWeight: 'bold',
+                    border: `1px solid ${isSniffing ? '#bbf7d0' : '#cbd5e1'}`,
+                    transition: 'all 0.3s'
+                  }}>
+                    {host}
+                  </span>
+                ))}
+              </div>
           </div>
 
           <button 
@@ -128,7 +136,7 @@ const NetworkTraffic = () => {
 
       {/* 统计卡片 */}
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-        <StatCard title="Target Filter" value={targetHost} icon={Crosshair} color="#4F46E5" />
+        <StatCard title="Target Filter" value= "Websites" icon={Crosshair} color="#4F46E5" />
         <StatCard title="Active Unique IPs" value={isSniffing ? uniqueIPs : 0} icon={MonitorSmartphone} color="#F59E0B" />
         <StatCard title="Total Packets Matched" value={isSniffing ? trafficLogs.length : 0} icon={Wifi} color="#10B981" />
         <StatCard title="Engine Status" value={isSniffing ? "Listening on Port 80..." : "Idle"} icon={ShieldAlert} color={isSniffing ? "#10B981" : "#94a3b8"} />

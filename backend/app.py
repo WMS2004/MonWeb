@@ -310,7 +310,7 @@ if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
 # --- 抓包引擎全局变量 ---
 sniffer_thread = None
 stop_sniffing_flag = threading.Event()
-current_target_host = ""
+current_target_host = ["neverssl.com", "captive.apple.com", "info.cern.ch"]
 
 def packet_callback(packet):
     """当抓到一个包时的回调函数"""
@@ -330,9 +330,11 @@ def packet_callback(packet):
                     if line.startswith('Host: '):
                         host = line.split(' ')[1].strip()
                         break
-                
+
+                is_target = any(target in host for target in current_target_host)
+
                 # 如果这个请求访问的域名，符合我们前端设置的目标 (比如 neverssl.com)
-                if current_target_host in host:
+                if is_target:
                     with app.app_context():
                         new_log = TrafficLog(
                             source_ip=packet[IP].src,
@@ -347,7 +349,8 @@ def packet_callback(packet):
 
 def start_sniffing_task():
     """在后台线程中运行的抓包任务"""
-    global current_target_host
+    global stop_sniffing_flag
+    conf.ifaces.reload()
     
     # 动态寻找 IP 为 192.168.137.1 的热点网卡
     hotspot_iface = None
@@ -358,6 +361,7 @@ def start_sniffing_task():
             
     if not hotspot_iface:
         print("❌ [Sniffer Error] Could not find Hotspot interface (192.168.137.1). Is the hotspot turned on?")
+        print("Scapy currently sees these IPs:", [i.ip for i in conf.ifaces.values() if i.ip])
         return
 
     print(f"[*] 🚀 Sniffer engine starting on: {hotspot_iface.name} ({hotspot_iface.ip})")
@@ -365,7 +369,7 @@ def start_sniffing_task():
     try:
         sniff(
             filter="tcp port 80", 
-            iface=hotspot_iface,  # 传入真实的网卡对象，而不是字符串名字
+            iface=hotspot_iface,  
             prn=packet_callback, 
             store=0, 
             stop_filter=lambda p: stop_sniffing_flag.is_set()
@@ -1063,7 +1067,7 @@ def get_dashboard_chart():
 def start_traffic_sniff():
     global sniffer_thread, stop_sniffing_flag, current_target_host
     data = request.json
-    current_target_host = data.get('targetHost', 'neverssl.com')
+    current_target_host = ["neverssl.com", "captive.apple.com", "info.cern.ch"]
     
     if sniffer_thread and sniffer_thread.is_alive():
         return jsonify({"message": "Sniffer is already running"}), 200
@@ -1078,7 +1082,10 @@ def start_traffic_sniff():
     sniffer_thread.daemon = True # 主程序退出时自动关闭
     sniffer_thread.start()
     
-    return jsonify({"message": "Sniffing started", "target": current_target_host})
+    return jsonify({
+        "message": "Sniffing started", 
+        "targets": current_target_host
+    })
 
 @app.route('/api/traffic/stop', methods=['POST'])
 def stop_traffic_sniff():
