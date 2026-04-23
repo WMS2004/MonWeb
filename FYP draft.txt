@@ -1,0 +1,130 @@
+python -m venv venv
+.\venv\Scripts\activate
+
+python -m pip install flask flask-cors
+pip install flask flask-cors
+
+python .\app.py
+http://127.0.0.1:5000/api/test
+
+npm create vite@latest frontend -- --template react
+npm install
+npm run dev
+http://localhost:5173/
+
+http://localhost:5174/profile
+第二阶段
+pip install flask-sqlalchemy
+
+Invoke-WebRequest -Uri http://127.0.0.1:5000/api/init-db -Method POST
+
+
+http://localhost:5000/api/test
+
+Authentication Module (Login & Registration)
+
+Dashboard & Overview
+
+Website Monitoring Management
+
+Real-Time Analytics & AI Reports
+
+User Profile & Settings
+
+页面1 Login Page
+页面2 Register Page
+页面3 Dashboard
+页面4 Websites Status
+
+页面1 登录页面
+页面2 控制面板
+页面3 网站状态
+页面4 网站详情与监控页
+页面5 NLP 智能报告页
+页面6 添加新网站
+页面7 警报通知设置
+页面8 用户管理
+页面9 支持页面
+页面10 用户个人资料设置
+页面11 警报页面
+
+AI Suggestion Page?
+Compare Websites Page?
+
+设计目标：深度技术数据 + AI 辅助诊断。
+布局：
+头部：网站名称 + 大号状态徽章（UP / DOWN）+ “添加监控点”按钮。
+主图表区：大尺寸折线图（X轴：时间，Y轴：响应时间）。支持鼠标悬停查看具体毫秒数。
+AI Anomaly Detection (AI 异常检测)：在图表下方，如果检测到异常波峰，显示紫色的标记点，点击显示 AI 分析：“响应时间异常升高 200%，可能是数据库锁死。”
+底部日志区：原始 HTTP 状态码列表（200, 404, 500 等）。
+
+NLP 智能报告页 需要确定功能？
+
+
+这个功能需不需要加入？AI 辅助线：图表上可能有一条虚线表示“基准线”，超过此线 AI 会自动标记为异常。 ？主要是害怕用户不太明白这个功能的用处以及看起来每一个网站的基准线都不一样 会增加复杂性
+
+按了"Edit"按钮之后 就跳转去 添加新网站页面，只是这个时候需要 显示已经是编辑好的网站信息，之后admin 和 Technical 可以从中 Edit 网站
+
+Report 内容过长 ，有* 在内容里面，内容里面有点太过严格的monitoring 标准，需要降低标准，让Report 看起来美观很多，Dashboard 还没加上AI ,需要2次确认目前的检测方法，
+
+Website Monitoring 标准
+重新检查所有页面，Support 页面 要重点 看看 知识点，确保普通用户也可以了解
+要把全部东西都英文化 （所有东西，AI 回答）
+到最后 总结全部代码 文件， 让用户 只需要点击一个文件 便可以运行 后端和前端
+把需要下载的东西 都留起来， 确保 就算是另外一个电脑也可以完好的运行这个文件
+
+
+目前 检测功能 只有 ping
+需要增加 http request, traffic跟踪（如果可以），剩下的再来额外增加
+增加功能 也需要 改进Website Status 页面
+检测功能 是要做成 单一性 还是 多种？
+可以增加 检测的目标网站 region 地址
+AI 功能 需要 给予 用户关于 建议 和 问题 的原因或者来源
+需要拥有一个 dataset 也就是 machine learning
+同时响铃怎么办？（已解决，合并警报）
+
+git reset --hard d99debfa6b385ad2bed007c88e47b5963fae567e
+
+Invoke-WebRequest -Uri http://127.0.0.1:5000/api/init-db -Method POST 解决这个问题 不需要 每次改 database 都要 做这个
+
+后期 考虑增加 cybersecurity 元素，比如 密码 要加密
+
+Login 页面 在第一次 login 失败 之后 在 password 输入框的 眼睛 就会 消失！
+在 Website Detail 可以增加 filter 来查看 更长远的 资料
+
+浏览器LocalStorage MonWeb系统 使用的是 https://gemini.google.com/app/00d8d50c67ac2d47
+
+然后 增加一种选项
+
+同时 我知道 绝大多数大型机构、大学（比如 Asia Pacific University 的核心服务器）和企业，为了防止 DDoS 攻击或网络扫描，会在他们的边缘防火墙（Firewall）上直接丢弃所有 ICMP (Ping) 数据包。所以对于 这种 目标网站已经是 丢弃所有 ICMP (Ping) 数据包 的网站 MonWeb系统 的 ping 监控是无法起到作用是吗？因为在展示系统的时候 到时候 老师一定会让我增加一个 新的网站 来查看 我的系统是否 成功，如果 我的系统在前端 显示了 DOWN ，但是 我自己在演讲的时候 打开浏览器来 验证 反而是能够浏览目标网站 ，将会是不及格
+
+现在Dashboard 页面 的左侧：从数据库读取的真实列表 弄好了，接下来 要开始调整 WebsiteStatus 页面
+
+現在 Dashboard 頁面和 WebsiteStatus 頁面和 WebsiteDetails 页面 和 Report页面都成功顯示出 我要的結果了，接下來 要開始調整 WebsiteForm 頁面
+
+現在 Dashboard 頁面和 WebsiteStatus 頁面和 WebsiteDetails 页面 和 Report页面和Alert 頁面和WebsiteForm 頁面都成功顯示出 我要的結果了，接下來 要開始調整 Dashboard 頁面。 把 Smart Mute Mode 和 Trigger Conditions 这个给去除掉。警报历史卡片 里面的 Status 弄成 对于 ping 就显示 response time 对于 http 就显示 http status code (200)，去除 Latency。并且是拥有弹窗警告的功能
+
+WebsiteStatus页面 我要把 Scan Now 按钮 弄成，就是 会重新扫描 全部目标网站 包括 http 和 ping，并且是会自动刷新页面 来让用户能够获取当前的监控结果，但是在Scan Now按钮之后，监控任务 同时也跟着已经设置好的时间 来继续监控。同时，这个 Scan Now 按钮 是要根据 目标按钮已经
+
+
+
+
+
+
+
+UAT
+UET
+2 Type of Testing
+
+presentation
+database
+AI report
+为什么？ 怎么样？ 功能？
+
+presentation
+slide
+
+
+
+
+email configuration
