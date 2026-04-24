@@ -16,6 +16,7 @@ import UserManagement from './pages/UserManagement';
 import Support from './pages/Support';
 import Profile from './pages/Profile';
 import NetworkTraffic from './pages/NetworkTraffic';
+import TrafficHistory from './pages/TrafficHistory';
 
 function App() {
   return (
@@ -41,6 +42,7 @@ function App() {
           <Route path="profile" element={<Profile />} />
           <Route path="/website/:id" element={<WebsiteDetails />} />
           <Route path="traffic" element={<NetworkTraffic />} />
+          <Route path="traffic-history" element={<TrafficHistory />} />
         </Route>
 
         {/* Catch all - Redirect to login or 404 */}

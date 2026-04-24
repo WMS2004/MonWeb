@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
-import { LayoutGrid, Globe, FileText, Bell, Users, HelpCircle, PlusCircle, Radio } from 'lucide-react';
+import { LayoutGrid, Globe, FileText, Bell, Users, HelpCircle, PlusCircle, Radio, Server } from 'lucide-react';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -153,6 +153,7 @@ const MainLayout = () => {
           <NavItem to="/reports" icon={FileText} label="Reports" />
           <NavItem to="/alerts" icon={Bell} label="Alerts" />
           <NavItem to="/traffic" icon={Radio} label="Network Traffic" />
+          <NavItem to="/traffic-history" style={{ paddingLeft: '32px' }} icon={Server} label="Traffic History" />
           
           {(userRole === 'Admin' || userRole === 'Technical') && (
             <NavItem to="/add-website" icon={PlusCircle} label="Add Website" />

@@ -8,7 +8,9 @@ import concurrent.futures
 import random
 import atexit
 import threading
-from scapy.all import sniff, IP, TCP, Raw, conf
+import ipaddress
+import queue
+from scapy.all import sniff, IP, TCP, UDP, ICMP, Raw, conf, DNSQR
 from google import genai
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -82,10 +84,12 @@ class TrafficLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=datetime.now)
     source_ip = db.Column(db.String(50))
-    method = db.Column(db.String(10))
-    host = db.Column(db.String(255))
-    # device 可以后续通过 User-Agent 解析，现在先存默认值
-    device = db.Column(db.String(100), default="Unknown/Mobile")
+    dest_ip = db.Column(db.String(50))
+    dest_port = db.Column(db.String(20))
+    protocol = db.Column(db.String(20))     # TCP, UDP, ICMP 等
+    location = db.Column(db.String(100))    # GeoIP 地理位置
+    asn_isp = db.Column(db.String(150))     # 运营商或组织公司
+    packet_size = db.Column(db.Integer)
 
 # --- 定义全局的 User-Agent 池 ---
 USER_AGENT_POOL = [
@@ -154,8 +158,9 @@ def http_check(url, timeout_sec):
     try:
         start_time = time.time()
         # allow_redirects=True 允许跟随跳转
-        response = requests.get(target_url, headers=headers, timeout=timeout_sec, allow_redirects=True)
+        response = requests.get(target_url, headers=headers, timeout=timeout_sec, allow_redirects=True, stream=True)
         duration = (time.time() - start_time) * 1000
+        response.close()
         
         if 200 <= response.status_code < 400:
             return True, round(duration, 2), response.status_code, None
@@ -242,7 +247,7 @@ def scan_all_websites(force=False):
         results = []
         
         # 2. 開啟多執行緒，把任務派發出去
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
             # 提交任務並收集 Future 狀態
             futures = [executor.submit(execute_single_task, td) for td in tasks_data]
             # 等待所有執行緒跑完，並收集它們回傳的結果 (results)
@@ -308,51 +313,128 @@ if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     atexit.register(lambda: scheduler.shutdown()) # 退出时关闭
 
 # --- 抓包引擎全局变量 ---
+# --- 嗅探器引擎全局变量 (防爆与缓存机制) ---
 sniffer_thread = None
+db_writer_thread = None
 stop_sniffing_flag = threading.Event()
-current_target_host = ["neverssl.com", "captive.apple.com", "info.cern.ch"]
+packet_queue = queue.Queue(maxsize=1000) # 异步写入队列，防止堵塞抓包
+IP_CACHE = {}         # GeoIP 缓存池，防止 API 速率超限
+SEEN_CONNECTIONS = {} # 连接状态记录，用于节流
+
+def get_geoip_info(ip):
+    """带缓存和防封锁机制的 GeoIP 查询"""
+    try:
+        # 如果是局域网 IP (比如你访问路由器)，不需要查询
+        if ipaddress.ip_address(ip).is_private:
+            return "Local Network", "Private IP"
+    except:
+        return "Unknown", "Unknown"
+
+    # 如果这个 IP 之前查过，直接从内存拿，速度 0ms，0次 API 消耗
+    if ip in IP_CACHE:
+        return IP_CACHE[ip]['location'], IP_CACHE[ip]['isp']
+
+    try:
+        # 使用免费的 ip-api (无需 API Key)
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=country,city,isp,org", timeout=2)
+        if response.status_code == 200:
+            data = response.json()
+            location = f"{data.get('country', 'Unknown')} - {data.get('city', 'Unknown')}"
+            isp = data.get('org') or data.get('isp') or "Unknown"
+            
+            # 存入缓存
+            IP_CACHE[ip] = {'location': location, 'isp': isp}
+            return location, isp
+    except Exception:
+        pass
+    
+    IP_CACHE[ip] = {'location': 'Unknown', 'isp': 'Unknown'}
+    return "Unknown", "Unknown"
 
 def packet_callback(packet):
-    """当抓到一个包时的回调函数"""
-    global current_target_host
-    # 只处理带有 TCP Payload (Raw) 的 80 端口数据包
-    if packet.haslayer(TCP) and packet.haslayer(Raw) and packet[TCP].dport == 80:
+    """超轻量级抓包回调，只做元数据提取和限流，不阻塞"""
+    if IP not in packet:
+        return
+        
+    src_ip = packet[IP].src
+    dst_ip = packet[IP].dst
+    packet_size = len(packet)
+    
+    protocol = "Other"
+    dest_port = "N/A"
+    
+    # 如果是 DNS 查询，直接把域名抓出来显示在前端
+    if packet.haslayer(DNSQR) and packet.haslayer(UDP) and packet[UDP].dport == 53:
         try:
-            # 尝试解码数据包内容
-            payload = packet[Raw].load.decode('utf-8', errors='ignore')
+            # 提取用户想访问的真实域名 (比如 apu.edu.my)
+            domain_name = packet[DNSQR].qname.decode('utf-8').rstrip('.')
+            dst_ip = domain_name # 巧妙的 Hack：把目标 IP 替换成域名，直接显示在前端表格里
+            protocol = "DNS"
+            dest_port = "53"
+        except:
+            pass
+    # -----------------------------------
+    elif TCP in packet:
+        protocol = "TCP"
+        dest_port = str(packet[TCP].dport)
+    elif UDP in packet:
+        protocol = "UDP"
+        dest_port = str(packet[UDP].dport)
+    elif ICMP in packet:
+        protocol = "ICMP"
+        dest_port = "Ping"
+
+    # 🚨 核心防爆机制 (Flow Throttling)
+    # 对于同一个 手机->目标IP->目标端口 的通讯，每 2 秒只记录一次。
+    # 这样就算在看 4K 视频，数据库每2秒也只会增加1条记录，而不是10000条！
+    conn_key = f"{src_ip}-{dst_ip}-{dest_port}"
+    now = time.time()
+    if conn_key in SEEN_CONNECTIONS:
+        if now - SEEN_CONNECTIONS[conn_key] < 2.0:
+            return # 仍在冷却时间内，抛弃多余的数据包记录
             
-            # 检查是否是 HTTP GET 请求
-            if payload.startswith('GET') and 'Host: ' in payload:
-                # 提取 Host 域名
-                lines = payload.split('\r\n')
-                host = ""
-                for line in lines:
-                    if line.startswith('Host: '):
-                        host = line.split(' ')[1].strip()
-                        break
+    SEEN_CONNECTIONS[conn_key] = now
+    
+    # 将符合要求的数据丢入队列，让后台线程去慢慢查 GeoIP 和写入数据库
+    try:
+        packet_queue.put_nowait({
+            'src': src_ip, 'dst': dst_ip, 'port': dest_port,
+            'proto': protocol, 'size': packet_size
+        })
+    except queue.Full:
+        pass # 如果队列满了就丢弃，自我保护
 
-                is_target = any(target in host for target in current_target_host)
-
-                # 如果这个请求访问的域名，符合我们前端设置的目标 (比如 neverssl.com)
-                if is_target:
-                    with app.app_context():
-                        new_log = TrafficLog(
-                            source_ip=packet[IP].src,
-                            method="GET",
-                            host=host
-                        )
-                        db.session.add(new_log)
-                        db.session.commit()
-                        print(f"🚨 [Sniffer] Captured: {packet[IP].src} -> {host}")
+def db_writer_worker():
+    """后台数据库写入线程，负责查 GeoIP 和插入数据库"""
+    while not stop_sniffing_flag.is_set():
+        try:
+            # 取出数据包，1秒超时防止线程死锁
+            pkt = packet_queue.get(timeout=1)
+            
+            # 由于加了缓存，这里不会触发 API 限制
+            location, isp = get_geoip_info(pkt['dst'])
+            
+            with app.app_context():
+                new_log = TrafficLog(
+                    source_ip=pkt['src'],
+                    dest_ip=pkt['dst'],
+                    dest_port=pkt['port'],
+                    protocol=pkt['proto'],
+                    location=location,
+                    asn_isp=isp,
+                    packet_size=pkt['size']
+                )
+                db.session.add(new_log)
+                db.session.commit()
+        except queue.Empty:
+            continue
         except Exception as e:
-            pass # 忽略解析错误的干扰包
+            pass # 发生错误时静默，保护演示顺利进行
 
 def start_sniffing_task():
-    """在后台线程中运行的抓包任务"""
-    global stop_sniffing_flag
+    global stop_sniffing_flag, db_writer_thread
     conf.ifaces.reload()
     
-    # 动态寻找 IP 为 192.168.137.1 的热点网卡
     hotspot_iface = None
     for iface in conf.ifaces.values():
         if iface.ip == '192.168.137.1':
@@ -360,22 +442,26 @@ def start_sniffing_task():
             break
             
     if not hotspot_iface:
-        print("❌ [Sniffer Error] Could not find Hotspot interface (192.168.137.1). Is the hotspot turned on?")
-        print("Scapy currently sees these IPs:", [i.ip for i in conf.ifaces.values() if i.ip])
+        print("❌ Could not find Hotspot interface.")
         return
 
-    print(f"[*] 🚀 Sniffer engine starting on: {hotspot_iface.name} ({hotspot_iface.ip})")
-    
+    # 启动后台写入线程
+    db_writer_thread = threading.Thread(target=db_writer_worker)
+    db_writer_thread.daemon = True
+    db_writer_thread.start()
+
+    print(f"[*] 🚀 Sniffer engine starting on: {hotspot_iface.name}")
     try:
+        # 修改为 filter="ip" 抓取所有流量，无视端口和是否加密
         sniff(
-            filter="tcp port 80", 
+            filter="ip", 
             iface=hotspot_iface,  
             prn=packet_callback, 
             store=0, 
             stop_filter=lambda p: stop_sniffing_flag.is_set()
         )
     except Exception as e:
-        print(f"❌ [Sniffer Error] Could not start sniffing: {e}")
+        print(f"❌ Sniffer Error: {e}")
 
 # --- 5. API 路由 ---
 @app.route('/')
@@ -1072,11 +1158,6 @@ def start_traffic_sniff():
     if sniffer_thread and sniffer_thread.is_alive():
         return jsonify({"message": "Sniffer is already running"}), 200
 
-    # 启动前清空旧的历史记录
-    with app.app_context():
-        TrafficLog.query.delete()
-        db.session.commit()
-
     stop_sniffing_flag.clear()
     sniffer_thread = threading.Thread(target=start_sniffing_task)
     sniffer_thread.daemon = True # 主程序退出时自动关闭
@@ -1095,15 +1176,38 @@ def stop_traffic_sniff():
 
 @app.route('/api/traffic/logs', methods=['GET'])
 def get_traffic_logs():
-    logs = TrafficLog.query.order_by(TrafficLog.timestamp.desc()).limit(15).all()
+    logs = TrafficLog.query.order_by(TrafficLog.timestamp.desc()).limit(20).all()
     output = []
     for log in logs:
         output.append({
             "id": log.id,
             "timestamp": log.timestamp.strftime("%H:%M:%S"),
             "sourceIp": log.source_ip,
-            "method": log.method,
-            "host": log.host
+            "destIp": log.dest_ip,
+            "destPort": log.dest_port,
+            "protocol": log.protocol,     # 替代了原本的 method
+            "location": log.location,
+            "isp": log.asn_isp,           # 替代了原本的 host
+            "size": log.packet_size
+        })
+    return jsonify(output)
+
+@app.route('/api/traffic/history', methods=['GET'])
+def get_traffic_history():
+    # 取最新的 1000 条记录（保护浏览器不被卡死，同时保证数据量足够）
+    logs = TrafficLog.query.order_by(TrafficLog.timestamp.desc()).limit(1000).all()
+    output = []
+    for log in logs:
+        output.append({
+            "id": log.id,
+            "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S"), # 这里加上了日期
+            "sourceIp": log.source_ip,
+            "destIp": log.dest_ip,
+            "destPort": log.dest_port,
+            "protocol": log.protocol,     
+            "location": log.location,
+            "isp": log.asn_isp,           
+            "size": log.packet_size
         })
     return jsonify(output)
 
