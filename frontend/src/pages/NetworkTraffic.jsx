@@ -113,11 +113,8 @@ const NetworkTraffic = () => {
       <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
         <div>
           <h2 style={{ margin: 0, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '24px' }}>
-            <Activity color="#4F46E5" size={28} /> Deep Packet Inspection (DPI) Engine
+            <Activity color="#4F46E5" size={28} /> Network Traffic Sniffer
           </h2>
-          <p style={{ margin: '6px 0 0 0', color: '#64748b', fontSize: '15px' }}>
-            Bypassing modern encryption by monitoring DNS queries and L3/L4 routing metadata.
-          </p>
         </div>
 
         <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
