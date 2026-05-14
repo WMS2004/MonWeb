@@ -22,7 +22,7 @@ const StatCard = ({ title, value, color, icon: Icon }) => (
 const Dashboard = () => {
   // --- State 定义 ---
   const [websites, setWebsites] = useState([]); 
-  const [chartData, setChartData] = useState([]); // 新增：用于存放真实图表数据
+  const [chartData, setChartData] = useState([]); 
   const [loading, setLoading] = useState(true); 
   const [scanning, setScanning] = useState(false); 
 
@@ -45,7 +45,7 @@ const Dashboard = () => {
       });
   };
 
-  // 👇 新增：从后端获取真实的图表趋势数据
+  // Retrieve real chart trend data from the backend
   const fetchChartData = () => {
     fetch('http://localhost:5000/api/dashboard/chart')
       .then(response => response.json())
@@ -123,7 +123,7 @@ const Dashboard = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* --- A. 顶部统计 --- */}
+      {/* --- A. Top Statistics --- */}
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <StatCard title="Total Monitored" value={loading ? "..." : websites.length} icon={Activity} color="#4F46E5" />
         <StatCard title="Online Status" value={loading ? "..." : upCount} icon={CheckCircle} color="#10B981" />
@@ -131,10 +131,10 @@ const Dashboard = () => {
         <StatCard title="Warnings" value={loading ? "..." : warningCount} icon={Server} color="#F59E0B" />
       </div>
 
-      {/* --- B. 中间内容区 --- */}
+      {/* --- B. Middle content area --- */}
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         
-        {/* 左侧：从数据库读取的真实列表 */}
+        {/* Left side: The actual list read from the database */}
         <div style={{ flex: 2, backgroundColor: 'white', padding: '20px', borderRadius: '12px', minWidth: '300px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0 }}>Live Status (Real-time)</h3>

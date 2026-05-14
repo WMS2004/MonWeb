@@ -34,7 +34,6 @@ const NetworkTraffic = () => {
         await fetch('http://localhost:5000/api/traffic/stop', { method: 'POST' });
         setIsSniffing(false);
       } else {
-        // 👇 修复了这里：加上了 headers 和 body，这样后端就不会报 415 错误了
         await fetch('http://localhost:5000/api/traffic/start', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -62,7 +61,6 @@ const NetworkTraffic = () => {
           
           setTrafficLogs(data);
 
-          // 核心优化：计算每秒吞吐量 (Packets Per Second)
           if (data.length > 0) {
             const currentMaxId = data[0].id;
             const prevMaxId = lastLogIdRef.current;
@@ -71,7 +69,7 @@ const NetworkTraffic = () => {
             if (prevMaxId === 0) {
                 newPacketsCount = data.length; // 第一次加载显示初始数量
             } else {
-                // 计算相比上一次轮询，新增了多少条记录
+                // Calculate how many new records have been added compared to the last polling.
                 newPacketsCount = data.filter(log => log.id > prevMaxId).length;
             }
             

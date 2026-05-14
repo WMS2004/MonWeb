@@ -35,39 +35,36 @@ db = SQLAlchemy(app)
 
 # --- 2. 定义数据表 (Models) ---
 
-# 用户表
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False) # 暂时存明文，后面再加加密
+    password = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(20), default='User') # Admin, Technical, User
 
-# 网站表 (代替原本的 PING_GROUPS)
 class Website(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False) # 比如 "Company Blog"
-    url = db.Column(db.String(500), nullable=False)  # 比如 "https://google.com"
-    is_muted = db.Column(db.Boolean, default=False) # 是否静默 (不发通知)
-    monitor_tasks = db.relationship('MonitorTask', backref='website', lazy=True, cascade="all, delete-orphan") # 关联监控任务表，删除网站时也删除相关任务
+    name = db.Column(db.String(100), nullable=False) #  "Company Blog"
+    url = db.Column(db.String(500), nullable=False)  # https://google.com"
+    is_muted = db.Column(db.Boolean, default=False) 
+    monitor_tasks = db.relationship('MonitorTask', backref='website', lazy=True, cascade="all, delete-orphan") # Associate the monitoring task table, delete the related tasks when deleting a website.
 
 class MonitorTask(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     website_id = db.Column(db.Integer, db.ForeignKey('website.id'), nullable=False)
     monitor_type = db.Column(db.String(20), nullable=False) # 'http', 'ping', 未来可加 'ssl', 'dns'
-    interval = db.Column(db.Float, default=5.0)      # 专属的监控频率
-    timeout = db.Column(db.Integer, default=10)      # 专属的超时阈值
-    status = db.Column(db.String(20), default='Unknown') # 当前任务是 Up 还是 Down
+    interval = db.Column(db.Float, default=5.0)      
+    timeout = db.Column(db.Integer, default=10)     
+    status = db.Column(db.String(20), default='Unknown') #  Up or Down
     last_checked = db.Column(db.DateTime, default=datetime.now)
 
-# 监控日志表 (存历史数据用来画图)
 class MonitoringLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     monitor_task_id = db.Column(db.Integer, db.ForeignKey('monitor_task.id'), nullable=False)
-    response_time = db.Column(db.Float) # 毫秒 (ms)
+    response_time = db.Column(db.Float) # ms
     status_code = db.Column(db.Integer) # 200, 404, 500
     status = db.Column(db.String(20))   # "UP" or "DOWN"
-    error_details = db.Column(db.Text, nullable=True) # 可选：存储错误信息
+    error_details = db.Column(db.Text, nullable=True) 
     timestamp = db.Column(db.DateTime, default=datetime.now, index=True)
 
 class AlertSetting(db.Model):
@@ -75,11 +72,10 @@ class AlertSetting(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
     browser_notify = db.Column(db.Boolean, default=True)
     sound_enabled = db.Column(db.Boolean, default=True)
-    fail_count = db.Column(db.Integer, default=2) # 触发次数
-    smart_mute = db.Column(db.Boolean, default=True) # 智能静音
+    fail_count = db.Column(db.Integer, default=2) # Trigger count
+    smart_mute = db.Column(db.Boolean, default=True) 
     mp3_url = db.Column(db.String(500), default='https://actions.google.com/sounds/v1/alarms/beep_short.ogg')
 
-# --- 网络流量抓包表 ---
 class TrafficLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=datetime.now)
@@ -87,8 +83,8 @@ class TrafficLog(db.Model):
     dest_ip = db.Column(db.String(50))
     dest_port = db.Column(db.String(20))
     protocol = db.Column(db.String(20))     # TCP, UDP, ICMP 等
-    location = db.Column(db.String(100))    # GeoIP 地理位置
-    asn_isp = db.Column(db.String(150))     # 运营商或组织公司
+    location = db.Column(db.String(100))    # GeoIP Geographical location
+    asn_isp = db.Column(db.String(150))     # Operators or organizations
     packet_size = db.Column(db.Integer)
 
 # --- 定义全局的 User-Agent 池 ---
@@ -317,20 +313,21 @@ if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
 sniffer_thread = None
 db_writer_thread = None
 stop_sniffing_flag = threading.Event()
-packet_queue = queue.Queue(maxsize=1000) # 异步写入队列，防止堵塞抓包
-IP_CACHE = {}         # GeoIP 缓存池，防止 API 速率超限
-SEEN_CONNECTIONS = {} # 连接状态记录，用于节流
+packet_queue = queue.Queue(maxsize=1000) # Preventing packet capture from being blocked
+IP_CACHE = {}         # GeoIP cache pool to prevent API rate exceeding limits.
+SEEN_CONNECTIONS = {} # Connection status records, used for throttling
 
 def get_geoip_info(ip):
-    """带缓存和防封锁机制的 GeoIP 查询"""
+    """GeoIP query with caching and anti-blocking mechanisms"""
     try:
-        # 如果是局域网 IP (比如你访问路由器)，不需要查询
+        # If it's a local area network (LAN) IP address (like when you access your router), 
+        # you don't need to look it up.
         if ipaddress.ip_address(ip).is_private:
             return "Local Network", "Private IP"
     except:
         return "Unknown", "Unknown"
 
-    # 如果这个 IP 之前查过，直接从内存拿，速度 0ms，0次 API 消耗
+    # If this IP has been queried before, it can be retrieved directly from memory
     if ip in IP_CACHE:
         return IP_CACHE[ip]['location'], IP_CACHE[ip]['isp']
 
@@ -352,7 +349,6 @@ def get_geoip_info(ip):
     return "Unknown", "Unknown"
 
 def packet_callback(packet):
-    """超轻量级抓包回调，只做元数据提取和限流，不阻塞"""
     if IP not in packet:
         return
         
@@ -363,12 +359,11 @@ def packet_callback(packet):
     protocol = "Other"
     dest_port = "N/A"
     
-    # 如果是 DNS 查询，直接把域名抓出来显示在前端
     if packet.haslayer(DNSQR) and packet.haslayer(UDP) and packet[UDP].dport == 53:
         try:
-            # 提取用户想访问的真实域名 (比如 apu.edu.my)
+            # Extract the real domain name (e.g., apu.edu.my)
             domain_name = packet[DNSQR].qname.decode('utf-8').rstrip('.')
-            dst_ip = domain_name # 巧妙的 Hack：把目标 IP 替换成域名，直接显示在前端表格里
+            dst_ip = domain_name 
             protocol = "DNS"
             dest_port = "53"
         except:
@@ -384,25 +379,21 @@ def packet_callback(packet):
         protocol = "ICMP"
         dest_port = "Ping"
 
-    # 🚨 核心防爆机制 (Flow Throttling)
-    # 对于同一个 手机->目标IP->目标端口 的通讯，每 2 秒只记录一次。
-    # 这样就算在看 4K 视频，数据库每2秒也只会增加1条记录，而不是10000条！
     conn_key = f"{src_ip}-{dst_ip}-{dest_port}"
     now = time.time()
     if conn_key in SEEN_CONNECTIONS:
         if now - SEEN_CONNECTIONS[conn_key] < 2.0:
-            return # 仍在冷却时间内，抛弃多余的数据包记录
+            return 
             
     SEEN_CONNECTIONS[conn_key] = now
     
-    # 将符合要求的数据丢入队列，让后台线程去慢慢查 GeoIP 和写入数据库
     try:
         packet_queue.put_nowait({
             'src': src_ip, 'dst': dst_ip, 'port': dest_port,
             'proto': protocol, 'size': packet_size
         })
     except queue.Full:
-        pass # 如果队列满了就丢弃，自我保护
+        pass 
 
 def db_writer_worker():
     """后台数据库写入线程，负责查 GeoIP 和插入数据库"""
@@ -633,8 +624,8 @@ def login():
             "status": "success", 
             "message": "Login successful",
             "user": {
-                "id": user.id,              # 👇 新增：必须返回 ID
-                "email": user.email,        # 👇 新增：必须返回 Email
+                "id": user.id,             
+                "email": user.email,       
                 "username": user.username, 
                 "role": user.role
             }
@@ -751,16 +742,16 @@ def generate_ai_report():
         
         print(f"[AI Report] Retrieving database records... Scope: {time_range}, Target: {target_site}")
         
-        # 1. 根據前端傳來的時間範圍計算閾值
+        # 1. Calculate the threshold based on the time range sent from the front end.
         now = datetime.now()
         if time_range == '24h':
             time_threshold = now - timedelta(hours=24)
         elif time_range == '30d':
             time_threshold = now - timedelta(days=30)
-        else: # 預設 7d
+        else: 
             time_threshold = now - timedelta(days=7)
 
-        # 2. 構建聯表查詢
+        # 2. Build the joined query
         query = db.session.query(MonitoringLog, MonitorTask, Website)\
             .join(MonitorTask, MonitoringLog.monitor_task_id == MonitorTask.id)\
             .join(Website, MonitorTask.website_id == Website.id)\
@@ -774,11 +765,10 @@ def generate_ai_report():
         if not logs:
             return jsonify({"status": "error", "message": "No monitoring data found for the selected time range and website."}), 400
             
-        # 3. 數據清洗與聚合
+        # 3. Data cleaning and aggregation
         site_stats = {}
         errors_summary = {'HTTP_Errors': 0, 'PING_Errors': 0, 'Timeouts': 0}
         
-        # 👇 核心修改：分開存儲 HTTP 和 PING 的圖表數據
         http_latencies = []
         ping_latencies = []
         
@@ -796,7 +786,7 @@ def generate_ai_report():
             stats["total_checks"] += 1
             stats["latencies"].append(log.response_time)
             
-            # 👇 讓 AI 知道具體的 HTTP Status Code (比如 404, 500)
+            # Let the AI ​​know the specific HTTP Status Code (e.g., 404, 500).
             if m_type == 'HTTP' and log.status_code:
                 stats["status_codes"].add(log.status_code)
             
@@ -816,7 +806,7 @@ def generate_ai_report():
                 if 'timeout' in str(log.error_details).lower() or log.response_time == 0:
                     errors_summary['Timeouts'] += 1
                     
-            # 👇 分開收集圖表數據
+            # Collect chart data separately
             chart_point = {
                 "name": log.timestamp.strftime("%H:%M"),
                 "ms": round(log.response_time, 2)
@@ -826,7 +816,7 @@ def generate_ai_report():
             elif m_type == 'PING':
                 ping_latencies.append(chart_point)
 
-        # 計算平均延遲並將 Set 轉換為 List
+        # Calculate the average delay and convert the Set to a List.
         for site, types in site_stats.items():
             for t, s in types.items():
                 s["avg_latency_ms"] = round(sum(s["latencies"]) / s["total_checks"], 2) if s["total_checks"] > 0 else 0
@@ -908,7 +898,7 @@ def support_chat():
         if not user_message:
             return jsonify({"status": "error", "message": "Message cannot be empty"}), 400
 
-        # 核心：通过严格的 Prompt 设定 AI 的人设和回答格式
+        # setting the AI's persona and response format through a prompt,
         prompt = f"""
         You are the exclusive AI Assistant for MonWeb (a real-time website monitoring system).
         A user is currently asking for help on the Support page.
@@ -1079,14 +1069,14 @@ def toggle_site_mute(id):
 # 获取全站 Top 30 警报/异常历史记录
 @app.route('/api/alerts/history', methods=['GET'])
 def get_alert_history():
-    # 联表查询：通过 MonitorTask 作为桥梁，连接 Log 和 Website
+    # Connect Log and Website using MonitorTask as a bridge
     logs = db.session.query(MonitoringLog, MonitorTask, Website)\
         .join(MonitorTask, MonitoringLog.monitor_task_id == MonitorTask.id)\
         .join(Website, MonitorTask.website_id == Website.id)\
         .filter(
             db.or_(
                 MonitoringLog.status == 'Down',
-                MonitoringLog.status == 'Warning' # 把 Warning 也納入警報歷史
+                MonitoringLog.status == 'Warning'
             )
         ).order_by(MonitoringLog.timestamp.desc()).limit(30).all()
 
@@ -1095,12 +1085,12 @@ def get_alert_history():
         output.append({
             "id": log.id,
             "website_name": site.name,
-            "monitor_type": task.monitor_type.upper(), # 獨立一個欄位告訴前端是 HTTP 還是 PING
+            "monitor_type": task.monitor_type.upper(),
             "url": site.url,
-            "status": log.status, # 傳遞真實狀態 (Down 或 Warning)
+            "status": log.status, # Transmit the current status (Down or Warning)
             "status_code": log.status_code,
             "response_time": log.response_time,
-            "error_details": log.error_details, # 把具體報錯原因傳給前端
+            "error_details": log.error_details, # Transmit the specific error details to the frontend
             "time": log.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
             "is_muted": site.is_muted
         })
@@ -1151,9 +1141,7 @@ def get_dashboard_chart():
 # --- 嗅探器 API ---
 @app.route('/api/traffic/start', methods=['POST'])
 def start_traffic_sniff():
-    global sniffer_thread, stop_sniffing_flag, current_target_host
-    data = request.json
-    current_target_host = ["neverssl.com", "captive.apple.com", "info.cern.ch"]
+    global sniffer_thread, stop_sniffing_flag
     
     if sniffer_thread and sniffer_thread.is_alive():
         return jsonify({"message": "Sniffer is already running"}), 200
@@ -1165,13 +1153,12 @@ def start_traffic_sniff():
     
     return jsonify({
         "message": "Sniffing started", 
-        "targets": current_target_host
     })
 
 @app.route('/api/traffic/stop', methods=['POST'])
 def stop_traffic_sniff():
     global stop_sniffing_flag
-    stop_sniffing_flag.set() # 发送停止信号给 scapy
+    stop_sniffing_flag.set() # Send Signal to Stop Sniffer Thread
     return jsonify({"message": "Sniffing stopped"})
 
 @app.route('/api/traffic/logs', methods=['GET'])

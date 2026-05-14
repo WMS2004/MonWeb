@@ -141,7 +141,7 @@ const MainLayout = () => {
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       
-      {/* --- 左侧侧边栏 --- */}
+      {/* --- Left sidebar --- */}
       <aside style={sidebarStyle}>
         <div style={{ padding: '24px 20px', fontSize: '22px', fontWeight: 'bold', color: '#ffffff', letterSpacing: '0.5px' }}>
           MonWeb System
