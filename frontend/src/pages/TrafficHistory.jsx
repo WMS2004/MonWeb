@@ -105,30 +105,77 @@ const TrafficHistory = () => {
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((log) => (
-                  <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                    <td style={{ padding: '15px 20px', color: '#64748b', fontSize: '13px' }}>{log.timestamp}</td>
-                    <td style={{ padding: '15px 20px', fontWeight: 'bold', color: '#334155' }}>{log.sourceIp}</td>
-                    <td style={{ padding: '15px 20px' }}>
-                      <span style={{ 
-                        backgroundColor: log.protocol === 'TCP' ? '#dbeafe' : log.protocol === 'UDP' ? '#fef3c7' : '#f3f4f6', 
-                        color: log.protocol === 'TCP' ? '#1e40af' : log.protocol === 'UDP' ? '#92400e' : '#374151', 
-                        padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' 
-                      }}>
-                        {log.protocol}
-                      </span>
-                    </td>
-                    <td style={{ padding: '15px 20px', fontFamily: 'monospace' }}>
-                      <span style={{ color: '#2563eb', fontWeight: 'bold' }}>{log.destIp}</span>
-                      <span style={{ color: '#94a3b8' }}> : {log.destPort}</span>
-                    </td>
-                    <td style={{ padding: '15px 20px' }}>
-                      <div style={{ fontWeight: 'bold', color: '#1E293B' }}>{log.isp}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>{log.location}</div>
-                    </td>
-                    <td style={{ padding: '15px 20px', color: '#64748b' }}>{log.size} B</td>
-                  </tr>
-                ))
+                filteredLogs.map((log) => {
+                  // 解析后端传来的暗号，判断是否是攻击
+                  const isAttack = log.isp && log.isp.includes('🚨');
+                  let displayIsp = log.isp;
+                  let attackLabel = null;
+                  
+                  if (isAttack) {
+                    const match = log.isp.match(/\[(🚨.*?)\]\s*(.*)/);
+                    if (match) {
+                      attackLabel = match[1];
+                      displayIsp = match[2];
+                    }
+                  }
+
+                  // 动态判断协议的颜色
+                  let pBg = '#f3f4f6', pText = '#374151';
+                  if (log.protocol === 'TCP') { pBg = '#dbeafe'; pText = '#1e40af'; }
+                  else if (log.protocol === 'UDP') { pBg = '#fef3c7'; pText = '#92400e'; }
+                  else if (log.protocol === 'DNS') { pBg = '#fce7f3'; pText = '#be185d'; }
+                  else if (log.protocol === 'ICMP') { pBg = '#e0e7ff'; pText = '#4338ca'; }
+
+                  return (
+                    <tr 
+                      key={log.id} 
+                      style={{ 
+                        borderBottom: '1px solid #f1f5f9', 
+                        transition: 'background 0.2s',
+                        // 如果是攻击，整行默认显示危险的淡红色背景
+                        backgroundColor: isAttack ? '#fef2f2' : 'transparent' 
+                      }} 
+                      // 悬浮时也会保持对应的红色加深或灰色加深
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isAttack ? '#fee2e2' : '#f8fafc'} 
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isAttack ? '#fef2f2' : 'transparent'}
+                    >
+                      <td style={{ padding: '15px 20px', color: isAttack ? '#ef4444' : '#64748b', fontSize: '13px', fontWeight: isAttack ? 'bold' : 'normal' }}>
+                        {log.timestamp}
+                      </td>
+                      <td style={{ padding: '15px 20px', fontWeight: 'bold', color: isAttack ? '#dc2626' : '#334155' }}>
+                        {log.sourceIp}
+                      </td>
+                      <td style={{ padding: '15px 20px' }}>
+                        <span style={{ 
+                          backgroundColor: isAttack ? '#fee2e2' : pBg, 
+                          color: isAttack ? '#dc2626' : pText, 
+                          padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' 
+                        }}>
+                          {log.protocol}
+                        </span>
+                      </td>
+                      <td style={{ padding: '15px 20px', fontFamily: 'monospace' }}>
+                        <span style={{ color: log.protocol === 'DNS' ? '#be185d' : (isAttack ? '#dc2626' : '#2563eb'), fontWeight: 'bold' }}>
+                          {log.destIp}
+                        </span>
+                        <span style={{ color: isAttack ? '#f87171' : '#94a3b8' }}> : {log.destPort}</span>
+                      </td>
+                      <td style={{ padding: '15px 20px' }}>
+                        {/* 如果是攻击，在这里显示出显眼的红色预警 Badge */}
+                        {isAttack && (
+                          <div style={{ color: '#dc2626', fontWeight: 'bold', fontSize: '11px', marginBottom: '6px', display: 'inline-block', backgroundColor: '#fca5a5', padding: '3px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(220,38,38,0.2)' }}>
+                            {attackLabel}
+                          </div>
+                        )}
+                        <div style={{ fontWeight: 'bold', color: isAttack ? '#dc2626' : '#1E293B' }}>{displayIsp}</div>
+                        <div style={{ fontSize: '12px', color: isAttack ? '#ef4444' : '#64748b' }}>{log.location}</div>
+                      </td>
+                      <td style={{ padding: '15px 20px', color: isAttack ? '#ef4444' : '#64748b', fontWeight: isAttack ? 'bold' : 'normal' }}>
+                        {log.size} B
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

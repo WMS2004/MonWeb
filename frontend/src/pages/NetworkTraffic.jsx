@@ -178,26 +178,58 @@ const NetworkTraffic = () => {
                 ) : (
                   trafficLogs.map((log) => {
                     const pStyle = getProtocolStyle(log.protocol);
+                    // 👇 新增：解析后端传来的暗号，判断是否是攻击
+                    const isAttack = log.isp && log.isp.includes('🚨');
+                    let displayIsp = log.isp;
+                    let attackLabel = null;
+                    
+                    // 如果是攻击，把 [🚨 警告类型] 和 真实的 ISP 拆分开来
+                    if (isAttack) {
+                        const match = log.isp.match(/\[(🚨.*?)\]\s*(.*)/);
+                        if (match) {
+                            attackLabel = match[1];
+                            displayIsp = match[2];
+                        }
+                    }
+
                     return (
-                      <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9', animation: 'fadeIn 0.5s ease-out' }}>
-                        <td style={{ padding: '14px 10px', color: '#64748b' }}>{log.timestamp}</td>
-                        <td style={{ padding: '14px 10px', fontWeight: 'bold', color: '#334155' }}>{log.sourceIp}</td>
+                      <tr key={log.id} style={{ 
+                          borderBottom: '1px solid #f1f5f9', 
+                          animation: 'fadeIn 0.5s ease-out',
+                          // 🚨 核心视觉改动：如果遇到攻击，整行变成危险的淡红色背景
+                          backgroundColor: isAttack ? '#fef2f2' : 'transparent',
+                          transition: 'background-color 0.3s'
+                      }}>
+                        <td style={{ padding: '14px 10px', color: isAttack ? '#ef4444' : '#64748b', fontWeight: isAttack ? 'bold' : 'normal' }}>
+                          {log.timestamp}
+                        </td>
+                        <td style={{ padding: '14px 10px', fontWeight: 'bold', color: isAttack ? '#dc2626' : '#334155' }}>
+                          {log.sourceIp}
+                        </td>
                         <td style={{ padding: '14px 10px' }}>
-                          <span style={{ backgroundColor: pStyle.bg, color: pStyle.text, padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
+                          <span style={{ backgroundColor: isAttack ? '#fee2e2' : pStyle.bg, color: isAttack ? '#dc2626' : pStyle.text, padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
                             {log.protocol}
                           </span>
                         </td>
                         <td style={{ padding: '14px 10px', fontFamily: 'monospace', fontSize: '13px' }}>
-                          <span style={{ color: log.protocol === 'DNS' ? '#be185d' : '#2563eb', fontWeight: log.protocol === 'DNS' ? 'bold' : 'normal' }}>
+                          <span style={{ color: log.protocol === 'DNS' ? '#be185d' : (isAttack ? '#dc2626' : '#2563eb'), fontWeight: log.protocol === 'DNS' ? 'bold' : 'normal' }}>
                             {log.destIp}
                           </span>
-                          <span style={{ color: '#94a3b8' }}> : {log.destPort}</span>
+                          <span style={{ color: isAttack ? '#f87171' : '#94a3b8' }}> : {log.destPort}</span>
                         </td>
                         <td style={{ padding: '14px 10px', maxWidth: '220px' }}>
-                          <div style={{ fontWeight: 'bold', color: '#1E293B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {log.isp}
+                          {/* 🚨 如果是攻击，在这里显示出显眼的红色预警 Badge */}
+                          {isAttack && (
+                              <div style={{ color: '#dc2626', fontWeight: 'bold', fontSize: '11px', marginBottom: '6px', display: 'inline-block', backgroundColor: '#fca5a5', padding: '3px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(220,38,38,0.2)' }}>
+                                  {attackLabel}
+                              </div>
+                          )}
+                          <div style={{ fontWeight: 'bold', color: isAttack ? '#dc2626' : '#1E293B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {displayIsp}
                           </div>
-                          <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>{log.location}</div>
+                          <div style={{ fontSize: '11.5px', color: isAttack ? '#ef4444' : '#94a3b8' }}>
+                            {log.location}
+                          </div>
                         </td>
                       </tr>
                     );

@@ -10,6 +10,7 @@ import atexit
 import threading
 import ipaddress
 import queue
+from collections import defaultdict
 from scapy.all import sniff, IP, TCP, UDP, ICMP, Raw, conf, DNSQR
 from google import genai
 from flask import Flask, jsonify, request
@@ -316,6 +317,7 @@ stop_sniffing_flag = threading.Event()
 packet_queue = queue.Queue(maxsize=1000) # Preventing packet capture from being blocked
 IP_CACHE = {}         # GeoIP cache pool to prevent API rate exceeding limits.
 SEEN_CONNECTIONS = {} # Connection status records, used for throttling
+ATTACK_TRACKER = defaultdict(lambda: {"ports": set(), "count": 0, "last_time": time.time()})
 
 def get_geoip_info(ip):
     """GeoIP query with caching and anti-blocking mechanisms"""
@@ -379,18 +381,48 @@ def packet_callback(packet):
         protocol = "ICMP"
         dest_port = "Ping"
 
-    conn_key = f"{src_ip}-{dst_ip}-{dest_port}"
+    # 🚨 轻量级 IDS 攻击检测逻辑 🚨
+    # ==========================================
+    attack_flag = None
     now = time.time()
-    if conn_key in SEEN_CONNECTIONS:
-        if now - SEEN_CONNECTIONS[conn_key] < 2.0:
-            return 
+    tracker = ATTACK_TRACKER[src_ip]
+
+    # 10秒滑动窗口，清理过期记录
+    if now - tracker["last_time"] > 10:
+        tracker["ports"].clear()
+        tracker["count"] = 0
+        
+    tracker["last_time"] = now
+    tracker["count"] += 1
+    if dest_port not in ["N/A", "Ping", "53"]:
+        tracker["ports"].add(dest_port)
+
+    # 【规则1】端口扫描 (Port Scan): 10秒内访问超过 8 个不同的端口
+    if len(tracker["ports"]) > 8:
+        attack_flag = "🚨 Port Scan"
+    # 【规则2】拒绝服务攻击 (DoS/Flood): 10秒内发包数异常飙升
+    elif tracker["count"] > 100:  # 调低阈值方便 FYP 演示
+        attack_flag = "🚨 DoS Flood"
+    # 【规则3】恶意高危端口: (4444=Metasploit, 3389=RDP爆破, 22=SSH爆破 23=Telnet爆破 135/445=Windows远程漏洞利用)
+    elif str(dest_port) in ["4444", "3389", "445", "135", "22", "23", "135"]:
+        attack_flag = "🚨 Suspicious Port"
+    # 【规则4】死亡之Ping (Ping of Death): ICMP包且体积异常庞大
+    elif protocol == "ICMP" and packet_size > 1000:
+        attack_flag = "🚨 Large ICMP (PoD)"
+
+    conn_key = f"{src_ip}-{dst_ip}-{dest_port}"
+    if not attack_flag:
+        if conn_key in SEEN_CONNECTIONS:
+            if now - SEEN_CONNECTIONS[conn_key] < 2.0:
+                return 
             
     SEEN_CONNECTIONS[conn_key] = now
     
     try:
         packet_queue.put_nowait({
             'src': src_ip, 'dst': dst_ip, 'port': dest_port,
-            'proto': protocol, 'size': packet_size
+            'proto': protocol, 'size': packet_size,
+            'attack_flag': attack_flag
         })
     except queue.Full:
         pass 
@@ -404,6 +436,9 @@ def db_writer_worker():
             
             # 由于加了缓存，这里不会触发 API 限制
             location, isp = get_geoip_info(pkt['dst'])
+            final_isp = isp
+            if pkt.get('attack_flag'):
+                final_isp = f"[{pkt['attack_flag']}] {isp}"
             
             with app.app_context():
                 new_log = TrafficLog(
@@ -412,7 +447,7 @@ def db_writer_worker():
                     dest_port=pkt['port'],
                     protocol=pkt['proto'],
                     location=location,
-                    asn_isp=isp,
+                    asn_isp=final_isp,
                     packet_size=pkt['size']
                 )
                 db.session.add(new_log)
