@@ -16,13 +16,13 @@ const Alerts = () => {
   useEffect(() => {
     if (!currentUser.id) return;
     
-    // 1. 获取设置
+    // 1. Get settings
     fetch(`http://localhost:5000/api/alerts/settings/${currentUser.id}`)
       .then(res => res.json())
       .then(data => setSettings({ browserNotify: data.browserNotify, soundEnabled: data.soundEnabled }))
       .catch(err => console.error(err));
 
-    // 2. 获取网站列表
+    // 2. Get website list
     fetch('http://localhost:5000/api/websites')
       .then(res => res.json())
       .then(data => {
@@ -30,12 +30,13 @@ const Alerts = () => {
         setIsLoading(false);
       });
 
-    // 3. 仅获取警报历史数据用于展示 (弹窗逻辑已被移至 MainLayout 全局)
+    // 3. Only historical alarm data is retrieved for display purposes 
+    // (the pop-up logic has been moved to the MainLayout global view).
     const fetchHistory = () => {
       fetch('http://localhost:5000/api/alerts/history')
         .then(res => res.json())
         .then(data => setAlertHistory(data))
-        .catch(err => console.error("无法获取警报历史: ", err));
+        .catch(err => console.error("Unable to retrieve alarm history: ", err));
     };
 
     fetchHistory();
@@ -60,7 +61,7 @@ const Alerts = () => {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_muted: newStatus })
-    }).catch(() => alert("同步失败"));
+    }).catch(() => alert("Synchronization failed. Please try again."));
   };
 
   const handleSave = () => {
@@ -78,16 +79,16 @@ const Alerts = () => {
 
   const handleTest = () => {
     if (settings.soundEnabled) {
-      new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play().catch(e => console.error("音频需交互后播放:", e));
+      new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play().catch(e => console.error("Audio requires user interaction to play:", e));
     }
     if (settings.browserNotify && Notification.permission === 'granted') {
       new Notification('🚨 MonWeb 弹窗测试', {
-        body: '这是一条测试警报。如果您能看到此弹窗并听到声音，说明全局系统配置正确！',
+        body: 'This is a test alert. If you see this pop-up and hear the sound, your global system configuration is correct!',
         icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png'
       });
     } else if (settings.browserNotify) {
       Notification.requestPermission().then(permission => {
-        if (permission !== 'granted') alert("⚠️ 请在浏览器地址栏允许通知权限！");
+        if (permission !== 'granted') alert("⚠️ Please allow notification permissions in your browser's address bar!");
       });
     }
   };
@@ -108,7 +109,7 @@ const Alerts = () => {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        {/* 卡片 1 */}
+        {/* Card 1 */}
         <div style={cardStyle}>
           <div style={cardHeaderStyle}><Bell size={20} color="#475569" /> Notification & Sound Settings</div>
           <div style={{ ...itemBoxStyle, borderLeft: '4px solid #2563eb', marginBottom: '16px' }}>
@@ -127,7 +128,7 @@ const Alerts = () => {
           </div>
         </div>
 
-        {/* 卡片 2 */}
+        {/* Card 2 */}
         <div style={cardStyle}>
           <div style={cardHeaderStyle}><Globe size={20} color="#0ea5e9" /> Independent Target Website Silent (Mute)</div>
           <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
@@ -147,7 +148,7 @@ const Alerts = () => {
           </div>
         </div>
 
-        {/* 底部按钮区 */}
+        {/* Bottom button area */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <button onClick={handleTest} style={{ padding: '10px 20px', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', color: '#334155', fontWeight: 'bold', cursor: 'pointer' }}>
             Send Test Pop-up
@@ -159,7 +160,7 @@ const Alerts = () => {
           )}
         </div>
 
-        {/* 历史卡片 */}
+        {/* History cards */}
         <div style={cardStyle}>
           <div style={cardHeaderStyle}><History size={20} color="#f59e0b" /> Real-Time Alert History (Top 30)</div>
           <div style={{ maxHeight: '400px', overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>

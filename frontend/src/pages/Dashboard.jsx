@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Activity, Server, AlertTriangle, CheckCircle, ArrowRight, RefreshCw, Zap, Info } from 'lucide-react';
 
-// --- 辅助小组件 ---
+// --- Accessories ---
 const StatCard = ({ title, value, color, icon: Icon }) => (
   <div style={{
     backgroundColor: 'white', padding: '20px', borderRadius: '12px',

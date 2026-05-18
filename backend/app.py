@@ -26,15 +26,15 @@ CORS(app)
 GEMINI_API_KEY = "AIzaSyB1FEGiMbIxrlYUOi2naULQjx-hZnoWQ9M" 
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# --- 1. 数据库配置 ---
-# 数据库文件会生成在 backend 文件夹下的 instance 目录或根目录
+# --- 1. Database Configuration ---
+# The database files will be generated in the instance directory or root directory under the backend folder.
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'monweb.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# --- 2. 定义数据表 (Models) ---
+# --- 2. Define Data Models ---
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -53,7 +53,7 @@ class Website(db.Model):
 class MonitorTask(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     website_id = db.Column(db.Integer, db.ForeignKey('website.id'), nullable=False)
-    monitor_type = db.Column(db.String(20), nullable=False) # 'http', 'ping', 未来可加 'ssl', 'dns'
+    monitor_type = db.Column(db.String(20), nullable=False) # 'http', 'ping'
     interval = db.Column(db.Float, default=5.0)      
     timeout = db.Column(db.Integer, default=10)     
     status = db.Column(db.String(20), default='Unknown') #  Up or Down
@@ -83,12 +83,12 @@ class TrafficLog(db.Model):
     source_ip = db.Column(db.String(50))
     dest_ip = db.Column(db.String(50))
     dest_port = db.Column(db.String(20))
-    protocol = db.Column(db.String(20))     # TCP, UDP, ICMP 等
+    protocol = db.Column(db.String(20))     # TCP, UDP, ICMP 
     location = db.Column(db.String(100))    # GeoIP Geographical location
     asn_isp = db.Column(db.String(150))     # Operators or organizations
     packet_size = db.Column(db.Integer)
 
-# --- 定义全局的 User-Agent 池 ---
+# --- Define Global User-Agent Pool ---
 USER_AGENT_POOL = [
     # Windows - Chrome
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -104,10 +104,10 @@ USER_AGENT_POOL = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 ]
 
-# 核心监控逻辑 PING
+# Core monitoring logic PING
 def ping_host(host, timeout_sec):
-    # 执行 PING
-    # Windows 使用 -n 1, Linux/Mac 使用 -c 1
+    # Execute PING
+    # Windows uses -n 1, Linux/Mac uses -c 1
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     timeout_arg = '-w' if platform.system().lower() == 'windows' else '-W'
     timeout_val = str(timeout_sec * 1000) if platform.system().lower() == 'windows' else str(timeout_sec)
@@ -115,9 +115,9 @@ def ping_host(host, timeout_sec):
     
     try:
         start_time = time.time()
-        # 执行命令，禁止输出到控制台
+        # Execute command, suppress output to console
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout_sec + 2, text=True)
-        duration = (time.time() - start_time) * 1000 # 转换为毫秒
+        duration = (time.time() - start_time) * 1000 # Convert to milliseconds
         
         if result.returncode == 0:
             return True, round(duration, 2), 200, None
@@ -128,8 +128,8 @@ def ping_host(host, timeout_sec):
             elif "timed out" in error_output.lower() or "100% loss" in error_output.lower():
                 return False, 0, 0, f"Ping Timeout: No response within {timeout_sec} seconds."
             else:
-                return False, 0, 0, f"ICMP Error: {error_output[:500]}" # 截断太长的日志
-            return False, 0, 0, f"Ping Failed: {error_output[:500]}" # 截断太长的日志
+                return False, 0, 0, f"ICMP Error: {error_output[:500]}" # Truncate overly long logs
+            return False, 0, 0, f"Ping Failed: {error_output[:500]}" # Truncate overly long logs
     except subprocess.TimeoutExpired:
         return False, 0, 0, f"Process Error: Command execution exceeded {timeout_sec}s."
     except Exception as e:
@@ -144,17 +144,17 @@ def http_check(url, timeout_sec):
     headers = {
         "User-Agent": random_user_agent,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7", # 告诉服务器接受英文和中文
+        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7", # Tell server to accept English and Chinese
         "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1", # 模拟浏览器自动尝试从 HTTP 升级到 HTTPS
-        "Sec-Fetch-Dest": "document",     # 现代浏览器发出的跨域请求防范头
+        "Upgrade-Insecure-Requests": "1", # Simulate browser automatically trying to upgrade from HTTP to HTTPS
+        "Sec-Fetch-Dest": "document",     # Modern browser发出的跨域请求防范头
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1"
     }
     try:
         start_time = time.time()
-        # allow_redirects=True 允许跟随跳转
+        # allow_redirects=True allows redirects.
         response = requests.get(target_url, headers=headers, timeout=timeout_sec, allow_redirects=True, stream=True)
         duration = (time.time() - start_time) * 1000
         response.close()
@@ -162,7 +162,7 @@ def http_check(url, timeout_sec):
         if 200 <= response.status_code < 400:
             return True, round(duration, 2), response.status_code, None
         else:
-            # 捕获类似 404 Not Found, 502 Bad Gateway 这种具体错误
+            # Capture specific errors such as 404 Not Found, 502 Bad Gateway
             return False, round(duration, 2), response.status_code, f"HTTP Error {response.status_code}: {response.reason}"
             
     except requests.exceptions.Timeout:
@@ -174,21 +174,21 @@ def http_check(url, timeout_sec):
     except Exception as e:
         return False, 0, 0, f"Request Exception: {str(e)}"
 
-# 单站扫描函数，供多线程池调用
+# Single-site scan function, called by the thread pool
 def execute_single_task(task_data):
     target = task_data['url']
     is_up = False
     latency, status_code = 0, 0
     error_msg = None
 
-    # 1. 根據類型分配檢測任務
+    # 1. Assign detection tasks based on type
     if task_data['type'] == 'ping':
         clean_target = target.replace('https://', '').replace('http://', '').split('/')[0]
         is_up, latency, status_code, error_msg = ping_host(clean_target, task_data['timeout'])
     elif task_data['type'] == 'http':
         is_up, latency, status_code, error_msg = http_check(target, task_data['timeout'])
         
-    # 2. 智能狀態判斷
+    # 2. Intelligent Status Judgment
     if not is_up:
         new_status = "Down"
     elif task_data['type'] == 'ping' and latency > 500:
@@ -198,7 +198,7 @@ def execute_single_task(task_data):
     else:
         new_status = "Up"
         
-    # 3. 處理完畢，把結果打包成字典「回傳」給主排程器
+    # 3. Processing complete, package the results into a dictionary and return to the main scheduler
     return {
         "task_id": task_data['id'],
         "status": new_status,
@@ -209,9 +209,9 @@ def execute_single_task(task_data):
         "site_name": task_data['name']
     }  
 
-# 全站扫描函数，供定时器调用
+# Full-site scan function, called by the timer
 def scan_all_websites(force=False):
-    """使用多執行緒併發執行所有監控任務，跑完後【統一合併寫入】資料庫"""
+    """Use multiple threads to execute all monitoring tasks concurrently."""
     with app.app_context():
         print(f"\n[Scheduler] Starting scan at {datetime.now().strftime('%H:%M:%S')}(Force: {force})...")
         tasks = MonitorTask.query.all()
@@ -232,7 +232,7 @@ def scan_all_websites(force=False):
             
         print(f"[Scheduler] {len(task_to_run)} tasks are due for scanning.")
 
-        # 1. 將需要用到的資料提取出來，打包給執行緒 (避免跨執行緒操作 SQLAlchemy 物件)
+        # 1. Extract the required data and package it for the threads (to avoid cross-thread operations with SQLAlchemy objects)
         tasks_data = [{
             'id': t.id,
             'url': t.website.url,
@@ -243,15 +243,15 @@ def scan_all_websites(force=False):
 
         results = []
         
-        # 2. 開啟多執行緒，把任務派發出去
+        # 2. Create multiple threads and dispatch tasks.
         with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-            # 提交任務並收集 Future 狀態
+            # Submit tasks and collect Future states
             futures = [executor.submit(execute_single_task, td) for td in tasks_data]
-            # 等待所有執行緒跑完，並收集它們回傳的結果 (results)
+            # Wait for all threads to complete and collect their results (results)
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
         
-        # 3. 🎯 核心精髓：所有網路請求都跑完了，現在開始「一次性」寫入資料庫
+        # 3. 🎯 Core essence: All network requests are done, now start writing to the database
         for res in results:
             task = db.session.get(MonitorTask, res['task_id'])
             if task:
@@ -267,25 +267,24 @@ def scan_all_websites(force=False):
                 )
                 db.session.add(new_log)
                 
-                # 印出終端機 Log
+                # Print terminal log
                 log_text = f"[{res['monitor_type'].upper()}] {res['site_name']}: {res['status']} ({res['latency']}ms)"
                 if res['error_msg']: log_text += f" -> Error: {res['error_msg']}"
                 print(log_text)
         
-        # 💡 這一行最重要：統一提交！保證所有的 Log 都是「同生共死」的
         db.session.commit()
         
         print("[Scheduler] Scan finished.\n")
 
-# 数据库自动清理机制 (Housekeeping)
+# Automatic database cleanup mechanism (Housekeeping)
 def cleanup_old_logs():
     """定期清理超过 30 天的旧日志，防止数据库无限膨胀"""
     with app.app_context():
         try:
-            # 计算 30 天前的时间节点 (因为 AI 报告最多需要 30 天的数据)
+            # Calculate the time node 30 days ago (because AI reports need up to 30 days of data)
             cutoff_date = datetime.now() - timedelta(days=30)
             
-            # 批量删除过期的海量日志
+            # Batch delete expired massive logs
             deleted_count = MonitoringLog.query.filter(MonitoringLog.timestamp < cutoff_date).delete()
             db.session.commit()
             
@@ -295,22 +294,21 @@ def cleanup_old_logs():
             db.session.rollback()
             print(f"❌ [Housekeeping Error] Failed to clean logs: {e}")
 
-# --- 4. 启动定时任务 ---
-# 只有在主进程才启动 Scheduler，防止 Debug 模式下启动两次
+# --- 4. Start a scheduled task ---
+# Scheduler is only started in the main process to prevent it from starting twice in Debug mode.
 if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     scheduler = BackgroundScheduler()
     
-    # 1. 核心监控任务：每30秒自动扫描
+    # 1. Core monitoring task: Scan all websites every 30 seconds
     scheduler.add_job(func=scan_all_websites, trigger="interval", seconds=30) 
     
-    # 2. 👇 新增的打扫任务：每 24 小时自动触发一次数据库清理
+    # 2. 👇 New cleanup task: Trigger database cleanup every 24 hours
     scheduler.add_job(func=cleanup_old_logs, trigger="interval", hours=24) 
     
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown()) # 退出时关闭
 
-# --- 抓包引擎全局变量 ---
-# --- 嗅探器引擎全局变量 (防爆与缓存机制) ---
+# --- Packet capture engine global variables ---
 sniffer_thread = None
 db_writer_thread = None
 stop_sniffing_flag = threading.Event()
@@ -334,7 +332,7 @@ def get_geoip_info(ip):
         return IP_CACHE[ip]['location'], IP_CACHE[ip]['isp']
 
     try:
-        # 使用免费的 ip-api (无需 API Key)
+        # # Use the free IP API (no API Key required)
         response = requests.get(f"http://ip-api.com/json/{ip}?fields=country,city,isp,org", timeout=2)
         if response.status_code == 200:
             data = response.json()
@@ -370,7 +368,7 @@ def packet_callback(packet):
             dest_port = "53"
         except:
             pass
-    # -----------------------------------
+
     elif TCP in packet:
         protocol = "TCP"
         dest_port = str(packet[TCP].dport)
@@ -381,13 +379,11 @@ def packet_callback(packet):
         protocol = "ICMP"
         dest_port = "Ping"
 
-    # 🚨 轻量级 IDS 攻击检测逻辑 🚨
-    # ==========================================
     attack_flag = None
     now = time.time()
     tracker = ATTACK_TRACKER[src_ip]
 
-    # 10秒滑动窗口，清理过期记录
+    # Slide the window in 10 seconds to clear expired records.
     if now - tracker["last_time"] > 10:
         tracker["ports"].clear()
         tracker["count"] = 0
@@ -397,16 +393,17 @@ def packet_callback(packet):
     if dest_port not in ["N/A", "Ping", "53"]:
         tracker["ports"].add(dest_port)
 
-    # 【规则1】端口扫描 (Port Scan): 10秒内访问超过 8 个不同的端口
+    # 【Rule 1】Port Scan: Accessing more than 8 different ports within 10 seconds.
     if len(tracker["ports"]) > 8:
         attack_flag = "🚨 Port Scan"
-    # 【规则2】拒绝服务攻击 (DoS/Flood): 10秒内发包数异常飙升
+    # 【Rule 2】Denial-of-Service (DoS/Flood) attack: An abnormal surge in the number of packets sent within 10 seconds.
     elif tracker["count"] > 100:  # 调低阈值方便 FYP 演示
         attack_flag = "🚨 DoS Flood"
-    # 【规则3】恶意高危端口: (4444=Metasploit, 3389=RDP爆破, 22=SSH爆破 23=Telnet爆破 135/445=Windows远程漏洞利用)
+    # 【Rule 3】Malicious high-risk ports: (4444=Metasploit, 3389=RDP brute-force, 22=SSH brute-force, 
+    # 23=Telnet brute-force, 135/445=Windows remote vulnerability exploitation)
     elif str(dest_port) in ["4444", "3389", "445", "135", "22", "23", "135"]:
         attack_flag = "🚨 Suspicious Port"
-    # 【规则4】死亡之Ping (Ping of Death): ICMP包且体积异常庞大
+    # 【Rule 4】Ping of Death: An ICMP packet with an unusually large size.
     elif protocol == "ICMP" and packet_size > 1000:
         attack_flag = "🚨 Large ICMP (PoD)"
 
@@ -428,13 +425,13 @@ def packet_callback(packet):
         pass 
 
 def db_writer_worker():
-    """后台数据库写入线程，负责查 GeoIP 和插入数据库"""
+    """Backend database writing thread, responsible for querying GeoIP and inserting into the database"""
     while not stop_sniffing_flag.is_set():
         try:
-            # 取出数据包，1秒超时防止线程死锁
+            # Extract packet, 1-second timeout to prevent thread deadlock
             pkt = packet_queue.get(timeout=1)
             
-            # 由于加了缓存，这里不会触发 API 限制
+            # Because of caching, API restrictions will not be triggered here.
             location, isp = get_geoip_info(pkt['dst'])
             final_isp = isp
             if pkt.get('attack_flag'):
@@ -455,7 +452,7 @@ def db_writer_worker():
         except queue.Empty:
             continue
         except Exception as e:
-            pass # 发生错误时静默，保护演示顺利进行
+            pass 
 
 def start_sniffing_task():
     global stop_sniffing_flag, db_writer_thread
@@ -471,14 +468,13 @@ def start_sniffing_task():
         print("❌ Could not find Hotspot interface.")
         return
 
-    # 启动后台写入线程
+    # Start background write thread
     db_writer_thread = threading.Thread(target=db_writer_worker)
     db_writer_thread.daemon = True
     db_writer_thread.start()
 
     print(f"[*] 🚀 Sniffer engine starting on: {hotspot_iface.name}")
     try:
-        # 修改为 filter="ip" 抓取所有流量，无视端口和是否加密
         sniff(
             filter="ip", 
             iface=hotspot_iface,  
@@ -489,7 +485,7 @@ def start_sniffing_task():
     except Exception as e:
         print(f"❌ Sniffer Error: {e}")
 
-# --- 5. API 路由 ---
+# --- 5. API Routes ---
 @app.route('/')
 def home():
     return "MonWeb Intelligent Backend Running!"
@@ -507,9 +503,9 @@ def get_websites():
         down_count = 0
         warning_count = 0
 
-        # 遍历该网站名下的所有监控任务
+        # Traverse all monitoring tasks under this website.
         for task in site.monitor_tasks:
-            # 找到该任务最近的一条日志提取延迟
+            # Find the most recent log entry for this task and extract the delay.
             latest_log = MonitoringLog.query.filter_by(monitor_task_id=task.id).order_by(MonitoringLog.timestamp.desc()).first()
             res_time = latest_log.response_time if latest_log else None
             s_code = latest_log.status_code if latest_log else None
@@ -529,47 +525,48 @@ def get_websites():
             if task.status == 'Down': down_count += 1
             if task.status == 'Warning': warning_count += 1
             
-        # --- 核心：计算该网站的综合状态 (Overall Status) ---
+        # --- Core: Calculate the overall status of the website (Overall Status) ---
         total_tasks = len(tasks_data)
         if total_tasks == 0:
             overall_status = "Unknown"
         elif down_count == total_tasks:
-            overall_status = "Down" # 全部挂了才是真挂了
+            overall_status = "Down" # All tasks are Down (e.g., HTTP is down and Ping is down), then the website is Down
         elif down_count > 0 or warning_count > 0:
-            overall_status = "Warning" # 只要有部分任务 Down (如禁 Ping) 或者有任务高延迟，统统算 Warning
+            overall_status = "Warning" # Only some tasks are Down (e.g., Ping is disabled) or have high latency, then the website is Warning
         else:
-            overall_status = "Up" # 全绿
+            overall_status = "Up" # All tasks are Up
 
         output.append({
             "id": site.id,
             "name": site.name,
             "url": site.url,
-            "status": overall_status,   # 👇 返回综合状态给大盘红绿灯
-            "monitors": tasks_data,     # 👇 把子任务也发给前端，用来显示小徽章
+            "status": overall_status,  
+            "monitors": tasks_data,     
             "is_muted": site.is_muted
         })
     return jsonify(output)
 
-# Scan Now Button 手动触发扫描接口
+# Scan Now Button Manually trigger scan interface
 @app.route('/api/scan', methods=['POST'])
 def manual_scan():
     scan_all_websites(force=True)
     return jsonify({"message": "Scan completed successfully!"})
 
-# --- 1. 添加新网站 API (更新：支持存储全部字段) ---
+# --- Add New Website ---
 @app.route('/api/websites', methods=['POST'])
 def add_website():
     data = request.json
     if not data or 'name' not in data or 'url' not in data:
         return jsonify({"error": "Invalid data"}), 400
     
-    # 1. 先创建父级 Website
+    # 1. First create the parent Website
     new_site = Website(name=data['name'], url=data['url'])
     db.session.add(new_site)
-    db.session.flush() # 拿到 new_site.id 但先不提交
+    db.session.flush() 
     
-    # 2. 遍历前端传来的监控任务数组
-    # 前端传过来的格式例如: "monitors": [{"type": "http", "interval": 5, "timeout": 10}, {"type": "ping", "interval": 1, "timeout": 2}]
+    # 2. Traverse the monitoring tasks array sent from the frontend
+    # The format sent from the frontend might look like: "monitors": 
+    # [{"type": "http", "interval": 5, "timeout": 10}, {"type": "ping", "interval": 1, "timeout": 2}]
     monitors_data = data.get('monitors', [])
     for m in monitors_data:
         new_task = MonitorTask(
@@ -587,7 +584,7 @@ def add_website():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-# --- 2. 编辑/更新网站 API (全新增加) ---
+# --- Edit/Update Website API (Full Add) ---
 @app.route('/api/websites/<int:id>', methods=['PUT'])
 def update_website(id):
     site = Website.query.get_or_404(id)
@@ -596,17 +593,15 @@ def update_website(id):
     if 'name' in data: site.name = data['name']
     if 'url' in data: site.url = data['url']
     if 'is_muted' in data: site.is_muted = bool(data['is_muted'])
-    
-    # 更新监控任务：最简单的做法是先删除旧任务，再根据前端传来的重新创建
     if 'monitors' in data:
-        # 提取前端传来的监控类型 (比如 ['http', 'ping'])
+        # Extract the monitoring type sent from the front end (['http', 'ping']).
         frontend_types = [m['type'] for m in data['monitors']]
         
-        # 1. 更新已存在的任务，或创建新增的任务
+        # 1. Update an existing task or create a new task.
         for m in data['monitors']:
             existing_task = MonitorTask.query.filter_by(website_id=site.id, monitor_type=m['type']).first()
             if existing_task:
-                # 只更新参数，保留原有 ID，这样历史日志就不会丢失！
+                # Only update the parameters, keep the original ID, so that historical logs will not be lost!
                 existing_task.interval = float(m.get('interval', 5.0))
                 existing_task.timeout = int(m.get('timeout', 10.0))
             else:
@@ -618,7 +613,7 @@ def update_website(id):
                 )
                 db.session.add(new_task)
                 
-        # 2. 如果用户在前端取消勾选了某种监控，则删除该任务
+        # 2. If the user unchecks a monitoring type in the frontend, delete that task
         for old_task in site.monitor_tasks:
             if old_task.monitor_type not in frontend_types:
                 MonitoringLog.query.filter_by(monitor_task_id=old_task.id).delete()
@@ -630,7 +625,7 @@ def update_website(id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-# 2. 删除网站 API
+# 2. Delete website API
 @app.route('/api/websites/<int:id>', methods=['DELETE'])
 def delete_website(id):
     site = Website.query.get_or_404(id)
@@ -668,12 +663,12 @@ def login():
     else:
         return jsonify({"status": "error", "message": "Invalid username or password"}), 401
 
-# 获取单个网站的详细信息和最近的监控日志 (用于状态详情页)
+# Get detailed information and recent monitoring logs for a single website (for status detail page)
 @app.route('/api/websites/<int:id>/logs', methods=['GET'])
 def get_website_logs(id):
     site = Website.query.get_or_404(id)
     
-    # 联表获取该网站名下所有任务的最近日志 (取30条)
+    # Join tables to fetch the most recent logs for all tasks under this website (fetch 30 records)
     logs = db.session.query(MonitoringLog, MonitorTask)\
              .join(MonitorTask)\
              .filter(MonitorTask.website_id == id)\
@@ -685,11 +680,11 @@ def get_website_logs(id):
             "time": log.timestamp.strftime("%H:%M:%S"),
             "response_time": log.response_time,
             "status_code": log.status_code,
-            "type": task.monitor_type.upper(), # 区分是 HTTP 还是 PING 的日志
+            "type": task.monitor_type.upper(), # Distinguishing between HTTP and PING logs
             "error": log.error_details
         })
         
-    # 提取它的监控任务配置
+    # Extract its monitoring task configurations
     monitors_data = []
     for task in site.monitor_tasks:
         monitors_data.append({
@@ -705,12 +700,12 @@ def get_website_logs(id):
             "name": site.name,
             "url": site.url,
             "is_muted": site.is_muted,
-            "monitors": monitors_data # 把配置数组发给前端
+            "monitors": monitors_data # Send the configuration array to the frontend
         },
         "logs": logs_data
     })
 
-# AI/NLP 报告生成接口
+# AI/NLP Report generation interface
 @app.route('/api/reports/daily', methods=['GET'])
 def get_daily_report():
     websites = Website.query.all()
@@ -723,10 +718,10 @@ def get_daily_report():
     down_sites = 0
     warning_sites = 0
 
-    # 分析每个网站的数据
+    # Analyze data from each website
     for site in websites:
-        # 获取最近的 10 条记录用来分析趋势
-        logs = MonitoringLog.query.filter_by(website_id=site.id).order_by(MonitoringLog.timestamp.desc()).limit(10).all()
+        # Get the most recent 30 records for trend analysis
+        logs = MonitoringLog.query.filter_by(website_id=site.id).order_by(MonitoringLog.timestamp.desc()).limit(30).all()
         
         if not logs:
             report_details.append(f"• {site.name}: Insufficient data for analysis.")
@@ -735,7 +730,7 @@ def get_daily_report():
         avg_ping = sum(log.response_time for log in logs) / len(logs)
         errors = sum(1 for log in logs if log.status_code != 200)
 
-        # NLP 自然语言生成逻辑
+        # NLP Natural Language Generation Logic
         if site.status == 'Down' or errors > 0:
             down_sites += 1
             report_details.append(f"• {site.name} is currently DOWN. It experienced {errors} connection failures in recent checks. Immediate attention is required.")
@@ -745,7 +740,7 @@ def get_daily_report():
         else:
             report_details.append(f"• {site.name} is performing optimally with a healthy average response time of {avg_ping:.0f}ms.")
 
-    # 生成总体摘要 (Executive Summary)
+    # Generate an executive summary.
     if down_sites == 0 and warning_sites == 0:
         summary_intro = f"Excellent news! All {total_sites} monitored websites are running smoothly with no detected anomalies or downtime."
     elif down_sites > 0:
@@ -753,7 +748,7 @@ def get_daily_report():
     else:
         summary_intro = f"Notice: All systems are online, but {warning_sites} site(s) are experiencing performance degradation (High Latency)."
 
-    # 计算总体健康度
+    # Calculate overall health score
     health_score = ((total_sites - down_sites) / total_sites) * 100
 
     return jsonify({
@@ -860,7 +855,7 @@ def generate_ai_report():
                 if "status_codes" in s:
                     s["status_codes"] = list(s["status_codes"])
                 
-        # 👇 4. 嚴密的白話文 Prompt (去除 HealthScore，禁止星號，禁深奧詞彙)
+        # AI prompt
         prompt = f"""
         You are a helpful system monitoring assistant.
         Analyze the following website monitoring data, which separates HTTP and PING checks.
@@ -890,7 +885,7 @@ def generate_ai_report():
             contents=prompt
         )
         
-        # 👇 強制過濾大模型可能偷偷生成的 Markdown 星號
+        # Force filtering of Markdown asterisks that might be secretly generated by large models.
         response_text = response.text.strip().replace('*', '')
         
         if response_text.startswith('```json'):
@@ -907,15 +902,15 @@ def generate_ai_report():
         http_latencies.reverse()
         ping_latencies.reverse()
 
-        # 👇 5. 將分開的圖表數據傳給前端
+        # Send the separate chart data to the front end.
         final_report = {
             "summary": ai_data.get("summary", ""),
             "incidentAnalysis": ai_data.get("incidentAnalysis", ""),
             "insights": ai_data.get("insights", []),
             "recommendations": ai_data.get("recommendations", []),
             "errorChartData": error_chart,
-            "httpLatencyChartData": http_latencies[-10:], # 取最近10個點
-            "pingLatencyChartData": ping_latencies[-10:]  # 取最近10個點
+            "httpLatencyChartData": http_latencies[-10:], # Get the most recent 10 points
+            "pingLatencyChartData": ping_latencies[-10:]  # Get the most recent 10 points
         }
 
         return jsonify({"status": "success", "data": final_report}), 200
@@ -956,7 +951,7 @@ def support_chat():
             contents=prompt
         )
         
-        # 拿到文本后，为了100%确保没有星号，我们在后端做一次暴力替换清洗
+        # After getting the text, we do a force cleanup to ensure no asterisks are present
         clean_reply = response.text.strip().replace('*', '')
         print(clean_reply)
 
@@ -966,7 +961,7 @@ def support_chat():
         print(f"[Support AI] 发生错误: {e}")
         return jsonify({"status": "error", "message": "Oops! My brain short-circuited for a moment. Please try again later."}), 500
 
-# --- 6. 用户管理 API (/api/users) ---
+# --- 6. User Management API (/api/users) ---
 @app.route('/api/users', methods=['GET'])
 def get_users():
     users = User.query.all()
@@ -975,7 +970,7 @@ def get_users():
         output.append({
             "id": u.id,
             "username": u.username,
-            "email": u.email,  # 返回给前端展示
+            "email": u.email,  
             "role": u.role
         })
     return jsonify(output)
@@ -983,11 +978,11 @@ def get_users():
 @app.route('/api/users', methods=['POST'])
 def create_user():
     data = request.json
-    # 确保接收 email 和必需字段
+    # Make sure to receive emails and the required fields.
     if not data or 'username' not in data or 'password' not in data or 'email' not in data:
         return jsonify({"error": "Invalid data (missing fields)"}), 400
     
-    # 检查用户名或邮箱是否已存在
+    # Check if the username or email already exists
     if User.query.filter_by(username=data['username']).first():
         return jsonify({"error": "Username already exists"}), 400
     if User.query.filter_by(email=data['email']).first():
@@ -995,7 +990,7 @@ def create_user():
         
     new_user = User(
         username=data['username'],
-        email=data['email'],       # 存入数据库
+        email=data['email'],       # Store in database
         password=data['password'], 
         role=data.get('role', 'User')
     )
@@ -1011,7 +1006,7 @@ def create_user():
 def delete_user(id):
     user = User.query.get_or_404(id)
     
-    # 后端防呆逻辑：绝对不允许删除 Admin
+    # Deletion of Admin is absolutely prohibited.
     if user.role == 'Admin':
         return jsonify({"error": "Permission Denied: Cannot delete an Admin user."}), 403
         
@@ -1022,7 +1017,7 @@ def delete_user(id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- 7. 更新/编辑用户 API ---
+# --- Update/Edit User API ---
 @app.route('/api/users/<int:id>', methods=['PUT'])
 def update_user(id):
     user = User.query.get_or_404(id)
@@ -1030,18 +1025,17 @@ def update_user(id):
     if not data:
         return jsonify({"error": "Invalid data"}), 400
         
-    # --- 安全逻辑修改 ---
-    # 如果前端传了 role，我们需要验证权限
+    # --- Security Logic ---
     if 'role' in data:
-        # 不允许将现有账号提升为 Admin
+        # Existing accounts are not allowed to be upgraded to Admin
         if user.role != 'Admin' and data['role'] == 'Admin':
             return jsonify({"error": "Cannot assign Admin role to existing users."}), 403
-        # 不允许降级 Admin
+        # Downgrading is not allowed Admin
         if user.role == 'Admin' and data['role'] != 'Admin':
             return jsonify({"error": "Cannot downgrade an Admin user."}), 403
         user.role = data['role']
 
-    # 检查重名和重邮箱
+    # Check for duplicate usernames and emails
     if 'username' in data and data['username'] != user.username:
         if User.query.filter_by(username=data['username']).first():
             return jsonify({"error": "Username already exists"}), 400
@@ -1052,7 +1046,7 @@ def update_user(id):
             return jsonify({"error": "Email already exists"}), 400
         user.email = data['email']
 
-    # 修改密码
+    # Change password
     if 'password' in data and data['password'].strip() != "": 
         current_password = data.get('currentPassword', '')
         if user.password != current_password:
@@ -1064,7 +1058,7 @@ def update_user(id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 新增：获取与保存 Alert 设置
+# Get and save Alert settings
 @app.route('/api/alerts/settings/<int:user_id>', methods=['GET', 'POST'])
 def manage_alert_settings(user_id):
     if request.method == 'GET':
@@ -1093,7 +1087,7 @@ def manage_alert_settings(user_id):
         db.session.commit()
         return jsonify({"message": "Settings saved"})
 
-# 新增：单站静音切换
+# Toggle site mute status
 @app.route('/api/websites/<int:id>/mute', methods=['PUT'])
 def toggle_site_mute(id):
     site = Website.query.get_or_404(id)
@@ -1101,7 +1095,7 @@ def toggle_site_mute(id):
     db.session.commit()
     return jsonify({"message": "Mute status updated"})
 
-# 获取全站 Top 30 警报/异常历史记录
+# Get the site's top 30 alerts/anomalies history.
 @app.route('/api/alerts/history', methods=['GET'])
 def get_alert_history():
     # Connect Log and Website using MonitorTask as a bridge
@@ -1131,21 +1125,21 @@ def get_alert_history():
         })
     return jsonify(output)
 
-# 👇 新增：获取仪表盘全局响应时间趋势图数据
+# Get dashboard global response time trend chart data
 @app.route('/api/dashboard/chart', methods=['GET'])
 def get_dashboard_chart():
-    # 联表获取最新的 200 条记录
+    # Retrieve the latest 200 records from the join table.
     logs = db.session.query(MonitoringLog, MonitorTask)\
         .join(MonitorTask, MonitoringLog.monitor_task_id == MonitorTask.id)\
         .order_by(MonitoringLog.timestamp.desc()).limit(200).all()
         
     trend_data = {}
     for log, task in logs:
-        # 排除掉超时 (0ms) 的数据，避免拉低平均值导致图表失真
+        # Exclude data that timed out (0ms) to avoid lowering the average and distorting the chart.
         if not log.response_time or log.response_time <= 0: 
             continue
             
-        # 按 "HH:MM" 分钟级聚合
+        # Aggregate by "HH:MM" in minutes
         time_str = log.timestamp.strftime("%H:%M")
         m_type = task.monitor_type.lower()
         
@@ -1159,7 +1153,7 @@ def get_dashboard_chart():
         http_avg = round(sum(data["http"]) / len(data["http"]), 2) if data["http"] else 0
         ping_avg = round(sum(data["ping"]) / len(data["ping"]), 2) if data["ping"] else 0
         
-        # 只要有任何一项数据就加入图表
+        # Add any data point to the chart.
         if http_avg > 0 or ping_avg > 0:
             output.append({
                 "time": time_str,
@@ -1167,13 +1161,13 @@ def get_dashboard_chart():
                 "ping_ms": ping_avg
             })
             
-    # 按时间正序排列 (从左到右)
+    # Arranged in chronological order (from left to right)
     output.sort(key=lambda x: x['time'])
     
-    # 只取最近的 15 个点以保证图表美观不拥挤
+    # Only take the most recent 15 points to ensure the chart is visually appealing and not crowded
     return jsonify(output[-15:])
 
-# --- 嗅探器 API ---
+# --- Traffic Sniffer API ---
 @app.route('/api/traffic/start', methods=['POST'])
 def start_traffic_sniff():
     global sniffer_thread, stop_sniffing_flag
@@ -1183,7 +1177,7 @@ def start_traffic_sniff():
 
     stop_sniffing_flag.clear()
     sniffer_thread = threading.Thread(target=start_sniffing_task)
-    sniffer_thread.daemon = True # 主程序退出时自动关闭
+    sniffer_thread.daemon = True # Automatically close when the main program exits
     sniffer_thread.start()
     
     return jsonify({
@@ -1207,22 +1201,21 @@ def get_traffic_logs():
             "sourceIp": log.source_ip,
             "destIp": log.dest_ip,
             "destPort": log.dest_port,
-            "protocol": log.protocol,     # 替代了原本的 method
-            "location": log.location,
-            "isp": log.asn_isp,           # 替代了原本的 host
+            "protocol": log.protocol,     
+            "isp": log.asn_isp,           
             "size": log.packet_size
         })
     return jsonify(output)
 
 @app.route('/api/traffic/history', methods=['GET'])
 def get_traffic_history():
-    # 取最新的 1000 条记录（保护浏览器不被卡死，同时保证数据量足够）
+    # Retrieve the latest 1000 records (to prevent the browser from freezing while ensuring sufficient data volume).
     logs = TrafficLog.query.order_by(TrafficLog.timestamp.desc()).limit(1000).all()
     output = []
     for log in logs:
         output.append({
             "id": log.id,
-            "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S"), # 这里加上了日期
+            "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S"), 
             "sourceIp": log.source_ip,
             "destIp": log.dest_ip,
             "destPort": log.dest_port,
@@ -1233,32 +1226,32 @@ def get_traffic_history():
         })
     return jsonify(output)
 
-# 👇 自动初始化数据库的函数
+# Functions for automatically initializing the database
 def auto_setup_database():
     with app.app_context():
-        # 1. 自动建表（如果表已存在则会自动跳过）
+        # 1. Automatically create tables (skip if they already exist)
         db.create_all()
         
-        # 2. 自动检查并创建 Admin 账号
+        # 2. Automatically check and create Admin account
         admin_user = User.query.filter_by(username='admin').first()
         if not admin_user:
-            admin_user = User(username='admin', email='admin@monweb.com', password='1234', role='Admin')
+            admin_user = User(username='admin', email='admin@monweb.com', password='@dmIni$trator852', role='Admin')
             db.session.add(admin_user)
             db.session.commit()
             print("✅ [System] Admin account created automatically.")
 
-        # 3. 自动塞入全新架构的测试数据（如果数据库是空的）
+        # 3. Automatically populate test data with the new architecture (if the database is empty)
         if not Website.query.first():
             print("⏳ [System] Populating production websites...")
             sites_data = [
-                # === 第一组：每 30秒 (0.5分钟) 检查 PING ===
+                # === Group 1: Check PING every 30 seconds (0.5 minutes).===
                 {"name": "Majoriti", "url": "https://majoriti.com.my/", "ping_int": 0.5},
                 {"name": "mStar", "url": "https://www.mstar.com.my/", "ping_int": 0.5},
                 {"name": "Suria", "url": "https://suria.my/", "ping_int": 0.5},
                 {"name": "Star Media Group", "url": "https://www.starmediagroup.my/", "ping_int": 0.5},
                 {"name": "The Star", "url": "https://www.thestar.com.my/", "ping_int": 0.5},
 
-                # === 第二组：每 1分钟 检查 PING ===
+                # === Group 2: Check PING every 1 minute ===
                 {"name": "The Star Charts", "url": "https://charts.thestar.com.my/", "ping_int": 1},
                 {"name": "Suria Dengar", "url": "https://dengar.suria.my/", "ping_int": 1},
                 {"name": "Kuali", "url": "https://www.kuali.com/", "ping_int": 1},
@@ -1275,7 +1268,7 @@ def auto_setup_database():
                 {"name": "StarProperty", "url": "https://www.starproperty.my/", "ping_int": 1},
                 {"name": "CarSifu News", "url": "https://www.carsifu.my/news", "ping_int": 1},
 
-                # === 第三组：每 2分钟 检查 PING ===
+                # === Group 3: Check PING every 2 minutes ===
                 {"name": "StarProperty Awards", "url": "https://awards.starproperty.my/national/2024/", "ping_int": 2},
                 {"name": "StarProperty Best", "url": "https://best.starproperty.my/", "ping_int": 2},
                 {"name": "Eye On The Ball", "url": "https://eyeontheballfilm.com/", "ping_int": 2},
@@ -1293,9 +1286,9 @@ def auto_setup_database():
                 db.session.add(site)
                 db.session.commit() 
                 
-                # 👇 所有 HTTP 任务统一设置为 4 分钟
+                # All HTTP tasks are uniformly set to 4 minutes.
                 http_task = MonitorTask(website_id=site.id, monitor_type='http', interval=4, timeout=10)
-                # 👇 PING 任务根据数组里的专属配置动态设置
+                # The PING task is dynamically configured based on the specific settings in the array.
                 ping_task = MonitorTask(website_id=site.id, monitor_type='ping', interval=s_data["ping_int"], timeout=10)
                 
                 db.session.add_all([http_task, ping_task])
@@ -1305,5 +1298,5 @@ def auto_setup_database():
             print("✅ [System] Database already initialized. No action needed.")
 
 if __name__ == '__main__':
-    auto_setup_database()  # 👈 每次启动 Flask 都会先自动执行这个安全检查！
+    auto_setup_database()
     app.run(debug=True, port=5000)

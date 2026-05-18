@@ -7,10 +7,10 @@ const MainLayout = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
-  // --- 全局警报引擎相关 Ref ---
-  const lastAlertIdRef = useRef(null); // 全局追踪最新警报ID
+  // --- Global Alert Engine Related Ref ---
+  const lastAlertIdRef = useRef(null); // Global reference to track the latest alert ID
 
-  // 页面加载时获取当前登录的用户信息
+  // Get the currently logged-in user information when the page loads
   useEffect(() => {
     const storedUser = localStorage.getItem('monweb_user');
     if (storedUser) {
@@ -20,13 +20,14 @@ const MainLayout = () => {
     }
   }, [navigate]);
 
-  // 🌟 核心：全局后台静默警报引擎 (Global Alert Engine)
+  // Global Background Silent Alert Engine (Global Alert Engine)
   useEffect(() => {
     if (!user || location.pathname === '/login') return;
 
     const fetchGlobalAlerts = async () => {
       try {
-        // 1. 每次拉取最新的用户配置 (确保在 Alert 页面更改后立刻生效)
+        // 1. Retrieve the latest user configuration each time 
+        // (ensure changes take effect immediately after being displayed on the Alert page).
         let settings = { browserNotify: true, soundEnabled: true };
         try {
           const setRes = await fetch(`http://localhost:5000/api/alerts/settings/${user.id}`);
@@ -35,7 +36,7 @@ const MainLayout = () => {
           console.log("无法获取配置，使用默认配置");
         }
 
-        // 2. 拉取全局警报历史
+        // 2. Retrieve global alert history
         const histRes = await fetch('http://localhost:5000/api/alerts/history');
         if (!histRes.ok) return;
         const data = await histRes.json();
@@ -43,25 +44,25 @@ const MainLayout = () => {
         if (data.length > 0) {
           const currentLatestId = data[0].id;
 
-          // 如果是整个系统刚加载，只记录 ID，不弹窗
+          // If the system has just loaded, only record the ID without showing a popup
           if (lastAlertIdRef.current === null) {
             lastAlertIdRef.current = currentLatestId;
             return;
           }
 
-          // 🔴 发现新警报！(与 Alert 页面的防污染逻辑完全一致)
+          // Found new alert! (consistent with the anti-pollution logic on the Alert page)
           if (currentLatestId > lastAlertIdRef.current) {
             const newLogs = data.filter(log => log.id > lastAlertIdRef.current);
             const alertableLogs = newLogs.filter(log => !log.is_muted);
 
             if (alertableLogs.length > 0) {
               
-              // 触发声音
+              // Trigger sound
               if (settings.soundEnabled) {
                 new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play().catch(e => console.error("Audio block:", e));
               }
 
-              // 触发系统弹窗
+              // Trigger system popup
               if (settings.browserNotify && Notification.permission === 'granted') {
                 if (alertableLogs.length === 1) {
                   const newAlert = alertableLogs[0];
@@ -78,7 +79,7 @@ const MainLayout = () => {
                 }
               }
             }
-            // 更新追踪ID
+            // Update the tracked ID
             lastAlertIdRef.current = currentLatestId;
           }
         }
@@ -87,11 +88,11 @@ const MainLayout = () => {
       }
     };
 
-    fetchGlobalAlerts(); // 初始检查
-    const intervalId = setInterval(fetchGlobalAlerts, 10000); // 全局每 10 秒查一次
+    fetchGlobalAlerts(); // Initial check
+    const intervalId = setInterval(fetchGlobalAlerts, 10000); // Global check every 10 seconds
 
     return () => clearInterval(intervalId);
-  }, [user]); // 只要用户在线，引擎就一直跑
+  }, [user]); // The engine keeps running as long as the user is online.
 
   if (!user) return null; 
 
@@ -185,7 +186,7 @@ const MainLayout = () => {
         </div>
       </aside>
 
-      {/* --- 右侧主内容区 --- */}
+      {/* --- Right main content area --- */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
         <header style={{ height: '64px', background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', borderBottom: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>

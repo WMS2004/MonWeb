@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Activity, User as UserIcon, Lock } from 'lucide-react';
 
 export default function Login() {
-  // 表单状态默认留空
+  // The form status is left blank by default.
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,7 +16,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      // 向后端发送真实的登录请求
+      // Send a real login request to the backend
       const res = await fetch('http://localhost:5000/api/login', {
         method: 'POST',
         headers: {
@@ -28,11 +28,11 @@ export default function Login() {
       const data = await res.json();
 
       if (res.ok && data.status === 'success') {
-        // 登录成功，将用户信息存入本地存储并跳转
+        // Login successful, store user information in local storage and navigate
         localStorage.setItem('monweb_user', JSON.stringify(data.user));
         navigate('/dashboard');
       } else {
-        // 登录失败
+        // Login failed
         setError(data.message || 'Invalid username or password');
       }
     } catch (err) {
@@ -43,10 +43,10 @@ export default function Login() {
   };
 
   return (
-    // 深蓝色渐变背景 + 网络节点图案装饰
+    // Dark blue gradient background + network node pattern decoration
     <div className="min-h-screen bg-slate-900 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 to-slate-900 flex items-center justify-center relative overflow-hidden">
       
-      {/* 模拟网络节点的背景点阵 */}
+      {/* Background dot matrix of simulated network nodes*/}
       <div 
         className="absolute inset-0 opacity-20 pointer-events-none" 
         style={{ 
@@ -55,10 +55,10 @@ export default function Login() {
         }}
       ></div>
 
-      {/* 白色圆角登录卡片 */}
+      {/* White rounded corners login card */}
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative z-10 mx-4">
         
-        {/* 品牌区域 */}
+        {/* Brand Area */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 shadow-sm">
             <Activity className="w-8 h-8 text-blue-600" />
@@ -68,14 +68,14 @@ export default function Login() {
           <p className="text-xs text-slate-400 mt-1">AI-driven website monitoring system</p>
         </div>
 
-        {/* 错误信息展示 */}
+        {/* Error message display */}
         {error && (
           <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm rounded">
             {error}
           </div>
         )}
 
-        {/* 登录表单 */}
+        {/* Login form */}
         <form onSubmit={handleLogin} className="space-y-6">
           <div className="space-y-1">
             <label className="block text-sm font-medium text-slate-700">Username</label>
@@ -119,13 +119,6 @@ export default function Login() {
             {isLoading ? 'Authenticating...' : 'Login'}
           </button>
         </form>
-
-        {/* 演示信息 */}
-        <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-          <p className="text-sm text-slate-500">
-            Demo Credentials: <span className="font-semibold text-slate-700">admin</span> / <span className="font-semibold text-slate-700">1234</span>
-          </p>
-        </div>
       </div>
     </div>
   );
