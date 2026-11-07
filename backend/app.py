@@ -23,7 +23,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 app = Flask(__name__)
 CORS(app)
 
-GEMINI_API_KEY = "AIzaSyB1FEGiMbIxrlYUOi2naULQjx-hZnoWQ9M" 
+GEMINI_API_KEY = "" 
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # --- 1. Database Configuration ---
